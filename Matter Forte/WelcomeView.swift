@@ -15,7 +15,7 @@ extension Color {
 
 struct MatterForteAppView: View {
     @State private var showingNextView = false
-
+    
     var body: some View {
         NavigationStack {
             MatterForteRootView {
@@ -23,8 +23,9 @@ struct MatterForteAppView: View {
             }
             .toolbar(.hidden, for: .navigationBar)
             .navigationDestination(isPresented: $showingNextView) {
-                NextView()
-                    .toolbar(.visible, for: .navigationBar)
+                ContentView()
+                    .navigationBarBackButtonHidden(true)
+                    .toolbar(.hidden, for: .navigationBar)
             }
         }
         .preferredColorScheme(.light)
