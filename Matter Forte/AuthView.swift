@@ -28,6 +28,16 @@ struct AuthView: View {
     }
 
     var body: some View {
+        Group {
+            if model.isRegistering {
+                SignUpView(model: model)
+            } else {
+                loginForm
+            }
+        }
+    }
+
+    private var loginForm: some View {
         GeometryReader { geometry in
             ScrollView {
                 VStack(spacing: 0) {

@@ -4,7 +4,7 @@ import SwiftUI
 struct StudentView: View {
     var body: some View {
         NavigationStack {
-            StudentCohortListView()
+            InstituteStudentsView()
         }
         .tint(StudentDirectoryStyle.orange)
     }
@@ -15,7 +15,7 @@ private enum StudentDirectoryStyle {
     static let heading = Color(red: 0.76, green: 0.29, blue: 0.10)
 }
 
-struct CohortStudent: Identifiable, Hashable {
+nonisolated struct CohortStudent: Identifiable, Hashable, Sendable {
     let id: UUID
     var fullName: String
     var email: String
@@ -58,7 +58,7 @@ struct CohortStudent: Identifiable, Hashable {
     }
 }
 
-struct StudentCohort: Identifiable {
+nonisolated struct StudentCohort: Identifiable, Sendable {
     let id: UUID
     var name: String
     var students: [CohortStudent]
@@ -72,14 +72,20 @@ struct StudentCohort: Identifiable {
 
 struct StudentCohortListView: View {
     @State private var cohorts: [StudentCohort]
+    let onSaveStudent: ((UUID, CohortStudent) async throws -> Void)?
+    let onStudentAdded: () -> Void
     @State private var searchText = ""
     @State private var expandedCohorts: Set<UUID> = []
     @State private var collapsedSearchCohorts: Set<UUID> = []
     @State private var showingAddStudent = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    init(cohorts: [StudentCohort] = StudentCohort.sampleData) {
+    init(cohorts: [StudentCohort] = [],
+         onSaveStudent: ((UUID, CohortStudent) async throws -> Void)? = nil,
+         onStudentAdded: @escaping () -> Void = {}) {
         _cohorts = State(initialValue: cohorts)
+        self.onSaveStudent = onSaveStudent
+        self.onStudentAdded = onStudentAdded
     }
 
     private var query: String {
@@ -156,19 +162,16 @@ struct StudentCohortListView: View {
                         .font(.title2)
                         .foregroundStyle(.primary)
                 }
-                .disabled(cohorts.isEmpty)
+                .disabled(cohorts.isEmpty || onSaveStudent == nil)
                 .accessibilityLabel("Add a student")
             }
         }
         .navigationDestination(for: StudentProfileRoute.self) { route in
             CohortStudentProfileView(student: route.student, cohortName: route.cohortName)
         }
-        .sheet(isPresented: $showingAddStudent) {
-            AddCohortStudentView(cohorts: cohorts) { cohortID, student in
-                guard let index = cohorts.firstIndex(where: { $0.id == cohortID }) else { return }
-                cohorts[index].students.append(student)
-                searchText = ""
-                expandedCohorts.insert(cohortID)
+        .sheet(isPresented: $showingAddStudent, onDismiss: onStudentAdded) {
+            if let onSaveStudent {
+                AddCohortStudentView(cohorts: cohorts, onSave: onSaveStudent)
             }
         }
     }
@@ -432,9 +435,13 @@ struct StudentOverallProgressView: View {
     }
 }
 
-private struct AddCohortStudentView: View {
+struct AddCohortStudentView: View {
     let cohorts: [StudentCohort]
-    let onSave: (UUID, CohortStudent) -> Void
+    let onSave: (UUID, CohortStudent) async throws -> Void
+    let usesNavigationStack: Bool
+    @State private var isSaving = false
+    @State private var saveError: String?
+    @State private var didSave = false
     @Environment(\.dismiss) private var dismiss
     @State private var cohortID: UUID
     @State private var fullName = ""
@@ -450,14 +457,31 @@ private struct AddCohortStudentView: View {
             .filter { !$0.isEmpty }
     }
 
-    init(cohorts: [StudentCohort], onSave: @escaping (UUID, CohortStudent) -> Void) {
+    init(cohorts: [StudentCohort], usesNavigationStack: Bool = true,
+         onSave: @escaping (UUID, CohortStudent) async throws -> Void) {
         self.cohorts = cohorts
+        self.usesNavigationStack = usesNavigationStack
         self.onSave = onSave
         _cohortID = State(initialValue: cohorts.first?.id ?? UUID())
     }
 
     var body: some View {
-        NavigationStack {
+        Group {
+            if usesNavigationStack {
+                NavigationStack { form }
+            } else {
+                form
+            }
+        }
+        .tint(StudentDirectoryStyle.orange)
+        .alert("Student invited", isPresented: $didSave) {
+            Button("Done") { dismiss() }
+        } message: {
+            Text("An invitation was sent to the student. Their account is stored in Supabase.")
+        }
+    }
+
+    private var form: some View {
             Form {
                 Section("Student details") {
                     TextField("Full name", text: $fullName)
@@ -487,10 +511,14 @@ private struct AddCohortStudentView: View {
                     }
                 }
                 Section {
-                    Text("New students are available for this session.")
+                    Text("The student receives an email invitation to join the institute.")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                 }
+            }
+            .disabled(isSaving)
+            .safeAreaInset(edge: .bottom) {
+                if let saveError { Text(saveError).font(.caption).foregroundStyle(.red).padding().background(.background) }
             }
             .navigationTitle("Add Student")
             .navigationBarTitleDisplayMode(.inline)
@@ -499,41 +527,29 @@ private struct AddCohortStudentView: View {
                     Button("Cancel") { dismiss() }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Add") {
-                        onSave(cohortID, CohortStudent(
+                    Button(isSaving ? "Sending…" : "Invite") {
+                        guard !isSaving else { return }
+                        isSaving = true
+                        saveError = nil
+                        let student = CohortStudent(
                             fullName: fullName.trimmingCharacters(in: .whitespacesAndNewlines),
                             email: email.trimmingCharacters(in: .whitespacesAndNewlines),
                             university: university,
                             fieldOfStudy: fieldOfStudy,
                             techSkills: parsedSkills(techSkillsText),
                             essentialSkills: parsedSkills(essentialSkillsText)
-                        ))
-                        dismiss()
+                        )
+                        Task {
+                            defer { isSaving = false }
+                            do { try await onSave(cohortID, student); didSave = true }
+                            catch { saveError = "The invitation could not be sent. Check your connection and the institute invitation service, then try again." }
+                        }
                     }
-                    .disabled(fullName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .disabled(isSaving || fullName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                        || !SignUpValidation.email(email.trimmingCharacters(in: .whitespacesAndNewlines)))
                 }
             }
-        }
-        .tint(StudentDirectoryStyle.orange)
     }
-}
-
-extension StudentCohort {
-    // Fictional sample students. Replace with records from your data source.
-    static let sampleData: [StudentCohort] = [
-        StudentCohort(name: "Cohort 6", students: [
-            CohortStudent(fullName: "Prosperity Ndou", email: "proe@example.com", university: "MCRI", fieldOfStudy: "Developer", biography: "Interested in building accessible mobile applications.", skills: ["Swift", "UI Design"], essentialSkills: ["Communication", "Teamwork"]),
-            CohortStudent(fullName: "Wadzi Tanhuke", email: "wadzie@example.com", university: "MCRI", fieldOfStudy: "Documentation", biography: "Enjoys solving problems through technology.", skills: ["SQL", "Data Analysis"], essentialSkills: ["Problem Solving", "Time Management"])
-        ]),
-        StudentCohort(name: "Cohort 7", students: [
-            CohortStudent(fullName: "Valerie Sangweni", email: "vale@example.com", university: "MCRI", fieldOfStudy: "Developer", biography: "Interested in entrepreneurship and project management.", essentialSkills: ["Research", "Project Planning", "Communication"]),
-            CohortStudent(fullName: "Mthusi Ncube", email: "mthusi@example.com", university: "MCRI", fieldOfStudy: "Software Engineering", biography: "Learning to build useful web and mobile products.", skills: ["Python", "SwiftUI"], essentialSkills: ["Collaboration", "Adaptability"])
-        ]),
-        StudentCohort(name: "Cohort 8", students: [
-            CohortStudent(fullName: "Hazel", email: "hazel@example.com", university: "Sample University", fieldOfStudy: "Design", biography: "Passionate about thoughtful, simple user experiences.", skills: ["Prototyping", "Visual Design"], essentialSkills: ["Creativity", "Presentation"]),
-            CohortStudent(fullName: "Ashley", email: "ashley@example.com", university: "Sample University", fieldOfStudy: "Data Science", biography: "Interested in using data to answer practical questions.", skills: ["Statistics", "Python"], essentialSkills: ["Critical Thinking", "Teamwork"])
-        ])
-    ]
 }
 
 struct StudentView_Previews: PreviewProvider {

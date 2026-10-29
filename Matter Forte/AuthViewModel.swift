@@ -209,6 +209,9 @@ final class AuthViewModel: ObservableObject {
         // Never trim a password or silently change what the user entered.
         if password.isEmpty { errors["password"] = "Enter your password." }
         if isRegistering {
+            if !SignUpValidation.password(password) {
+                errors["password"] = "Use 8+ characters with a lowercase letter, uppercase letter, number and special character."
+            }
             if !hasAcceptedCurrentTerms {
                 errors["terms"] = "Read the Terms of Service and select I Agree before creating your account."
             }

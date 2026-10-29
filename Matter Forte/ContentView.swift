@@ -9,112 +9,106 @@ import Helpers
 @MainActor
 struct ContentView: View {
     @StateObject private var model = AuthViewModel(client: SupabaseConfig.client)
-
-    // Inject the platform data service and management flows when implemented.
-    var loadAdministratorDashboard: (() async throws -> AdministratorDashboardSnapshot)?
-    var administratorDestination: ((AdministratorDashboardDestination) -> AnyView)?
+    @State private var launchStage: AppLaunchStage = .splash
 
     var body: some View {
         Group {
-            if model.isRestoringSession {
+            if launchStage == .splash {
+                SplashView { launchStage = .welcome }
+            } else if model.isRestoringSession {
                 ProgressView("Restoring session…")
             } else if let session = model.authenticatedSession {
-                if session.user.appMetadata["role"] == .string("admin") {
-                    AdministratorDashboardView(
-                        session: session,
-                        loadDashboard: {
-                            if let loadAdministratorDashboard {
-                                return try await loadAdministratorDashboard()
-                            }
-                            return try await InstituteDashboardService.loadDashboard()
-                        },
-                        destination: { route in
-                            if let administratorDestination {
-                                return administratorDestination(route)
-                            }
-                            if route == .students {
-                                return AnyView(InstituteStudentsView())
-                            }
-                            if route == .approvals || route == .adminRequests {
-                                return AnyView(AdministratorRequestsView(client: SupabaseConfig.client))
-                            }
-                            if route == .settings {
-                                return AnyView(accountSettings)
-                            }
-                            return AnyView(ContentUnavailableView(
-                                route.title,
-                                systemImage: "wrench.and.screwdriver",
-                                description: Text("This management screen has not been connected yet.")
-                            ))
-                        }
-                    )
-                } else {
-                    signedInHome(session)
-                }
+                authenticatedContent(session)
+                    .id(session.user.id.uuidString + (metadataString(session.user.appMetadata["role"]) ?? ""))
+            } else if launchStage == .welcome {
+                WelcomeView { launchStage = .authentication }
             } else {
-                AuthView(model: model)
+                NavigationStack { AuthView(model: model) }
+                    .ignoresSafeArea(.keyboard, edges: .bottom)
             }
-        }
-        .task { await model.observeAuthChanges() }
-        .onOpenURL { url in
-            Task { await model.handleAuthCallback(url) }
-        }
-    }
-
-    private func signedInHome(_ session: Auth.Session) -> some View {
-        let requestedAdmin = session.user.userMetadata["requested_role"] == .string("admin")
-        let rejected = session.user.appMetadata["admin_request_status"] == .string("rejected")
-        return NavigationStack {
-            VStack(spacing: 20) {
-                Image(systemName: requestedAdmin ? "person.crop.circle.badge.exclamationmark" : "person.crop.circle")
-                    .font(.system(size: 44))
-                    .foregroundStyle(Color.appOrange)
-                Text(requestedAdmin ? (rejected ? "Admin request declined" : "Administrator approval pending") : "Welcome to Matter Forte")
-                    .font(.title2.bold())
-                    .multilineTextAlignment(.center)
-                Text(session.user.email ?? "Signed in")
-                    .foregroundStyle(.secondary)
-                if requestedAdmin {
-                    Text(rejected
-                        ? "An administrator declined your access request. Contact your platform administrator for help."
-                        : "An existing administrator needs to approve your request. After approval, tap Refresh Access to open your dashboard.")
-                        .multilineTextAlignment(.center)
-                    Button("Refresh Access") {
-                        Task { await model.refreshAdministratorAccess() }
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .disabled(model.isLoading)
-                }
-                accountSettings
-            }
-            .padding()
-            .navigationTitle(requestedAdmin ? "Admin Access" : "Home")
         }
         .tint(.appOrange)
-    }
-
-    private var accountSettings: some View {
-        VStack(spacing: 16) {
-            if let message = model.message {
-                Text(message).foregroundStyle(.red).multilineTextAlignment(.center)
-            }
-            Button(model.isLoading ? "Please wait…" : "Sign Out") {
-                Task { await model.signOut() }
-            }
-            .disabled(model.isLoading)
+        .task { await model.observeAuthChanges() }
+        .onChange(of: model.authenticatedSession?.user.id) { old, new in
+            if old != nil && new == nil { launchStage = .authentication }
         }
-        .padding()
+        .onOpenURL { url in Task { await model.handleAuthCallback(url) } }
+    }
+
+    @ViewBuilder
+    private func authenticatedContent(_ session: Auth.Session) -> some View {
+        switch SignedInDestination.resolve(
+            serverRole: metadataString(session.user.appMetadata["role"]),
+            requestedRole: metadataString(session.user.userMetadata["requested_role"])
+        ) {
+        case .administrator:
+            AdministratorDashboardView(session: session, loadDashboard: InstituteDashboardService.loadDashboard) { route in
+                switch route {
+                case .students: return AnyView(InstituteStudentsView())
+                case .addStudent: return AnyView(AddCohortStudentView(
+                    cohorts: [StudentCohort(name: "MCRI", students: [])],
+                    usesNavigationStack: false,
+                    onSave: { _, student in try await InstituteDashboardService.inviteStudent(student) }
+                ))
+                case .approvals, .adminRequests: return AnyView(AdministratorRequestsView(client: SupabaseConfig.client))
+                case .notifications: return AnyView(AdministratorNotificationsView())
+                case .settings: return AnyView(AccountSettingsView(model: model))
+                case .reportedIssues:
+                    return AnyView(ContentUnavailableView("Reported Issues", systemImage: "shield",
+                        description: Text("Issue reporting is not yet available for this platform.")))
+                }
+            }
+        case .student:
+            NavigationStack {
+                CohortStudentProfileView(student: ownStudentProfile(session),
+                    cohortName: metadataString(session.user.userMetadata["cohort"]) ?? "MCRI")
+                    .toolbar { ToolbarItem(placement: .topBarTrailing) {
+                        NavigationLink { AccountSettingsView(model: model) } label: {
+                            Label("Settings", systemImage: "gearshape")
+                        }
+                    } }
+            }
+        case .pendingAdministrator:
+            NavigationStack {
+                VStack(spacing: 20) {
+                    Image(systemName: "person.badge.clock").font(.largeTitle).foregroundStyle(Color.appOrange)
+                    let rejected = metadataString(session.user.appMetadata["admin_request_status"]) == "rejected"
+                    Text(rejected ? "Admin request declined" : "Administrator approval pending").font(.title2.bold())
+                    Text(rejected ? "Contact your platform administrator for help."
+                        : "An administrator will review your request. Refresh access after approval.")
+                    Button(model.isLoading ? "Checking…" : "Refresh Access") {
+                        Task { await model.refreshAdministratorAccess() }
+                    }.buttonStyle(.borderedProminent).disabled(model.isLoading)
+                    NavigationLink("Account Settings") { AccountSettingsView(model: model) }
+                    if let message = model.message { Text(message).foregroundStyle(.red) }
+                }
+                .multilineTextAlignment(.center).padding()
+                .navigationTitle("Admin Access")
+            }
+        case .employer, .account:
+            NavigationStack { AccountSettingsView(model: model) }
+        }
+    }
+
+    private func ownStudentProfile(_ session: Auth.Session) -> CohortStudent {
+        let data = session.user.userMetadata
+        return CohortStudent(id: session.user.id,
+            fullName: metadataString(data["full_name"]) ?? "Student",
+            email: session.user.email ?? "",
+            university: metadataString(data["institute"]) ?? "MCRI",
+            fieldOfStudy: metadataString(data["programme"]) ?? "",
+            biography: metadataString(data["biography"]) ?? "",
+            skills: metadataStrings(data["skills"]),
+            essentialSkills: metadataStrings(data["essential_skills"]))
     }
 }
 
-enum AdministratorDashboardConnectionError: LocalizedError {
-    case notConfigured
-
-    var errorDescription: String? {
-        "Administrator access is active. The dashboard data service has not been connected yet."
-    }
+private func metadataString(_ value: AnyJSON?) -> String? {
+    guard case let .string(string) = value else { return nil }
+    return string
 }
 
-#Preview("Authentication") {
-    AuthView(model: AuthViewModel(client: SupabaseConfig.client))
+private func metadataStrings(_ value: AnyJSON?) -> [String] {
+    guard case let .array(values) = value else { return [] }
+    return values.compactMap { metadataString($0) }
 }

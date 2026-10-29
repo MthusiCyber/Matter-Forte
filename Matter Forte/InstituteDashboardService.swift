@@ -1,16 +1,32 @@
 import SwiftUI
 import Supabase
+import Functions
 
 @MainActor
 enum InstituteDashboardService {
     static func loadDashboard() async throws -> AdministratorDashboardSnapshot {
-        try await SupabaseConfig.client.database
-            .rpc("matter_forte_dashboard_snapshot").execute().value
+        try await SupabaseConfig.client.database.rpc("matter_forte_dashboard_snapshot").execute().value
     }
 
     static func loadStudents() async throws -> [InstituteStudent] {
-        try await SupabaseConfig.client.database
-            .rpc("matter_forte_list_students").execute().value
+        try await SupabaseConfig.client.database.rpc("matter_forte_list_students").execute().value
+    }
+
+    static func inviteStudent(_ student: CohortStudent, cohortName: String = "MCRI") async throws {
+        nonisolated struct Invitation: Encodable, Sendable {
+            let full_name: String
+            let email: String
+            let institute: String
+            let programme: String
+            let cohort: String
+            let skills: [String]
+            let essential_skills: [String]
+        }
+        try await SupabaseConfig.client.functions.invoke("admin-invite-student", options: FunctionInvokeOptions(body: Invitation(
+            full_name: student.fullName, email: student.email,
+            institute: student.university.isEmpty ? "MCRI" : student.university,
+            programme: student.fieldOfStudy, cohort: cohortName, skills: student.techSkills, essential_skills: student.essentialSkills
+        )))
     }
 }
 
@@ -21,11 +37,22 @@ nonisolated struct InstituteStudent: Decodable, Identifiable, Sendable {
     let institute: String
     let programme: String
     let studentNumber: String
+    let cohort: String?
+    let biography: String?
+    let skills: [String]?
+    let essentialSkills: [String]?
 
     enum CodingKeys: String, CodingKey {
-        case id, email, institute, programme
+        case id, email, institute, programme, cohort, biography, skills
         case fullName = "full_name"
         case studentNumber = "student_number"
+        case essentialSkills = "essential_skills"
+    }
+
+    var profile: CohortStudent {
+        CohortStudent(id: id, fullName: fullName, email: email,
+            university: institute, fieldOfStudy: programme, biography: biography ?? "",
+            skills: skills ?? [], essentialSkills: essentialSkills ?? [])
     }
 }
 
@@ -33,45 +60,39 @@ struct InstituteStudentsView: View {
     @State private var students: [InstituteStudent] = []
     @State private var isLoading = true
     @State private var errorMessage: String?
-    @State private var searchText = ""
+    @State private var revision = UUID()
+    @State private var cohorts: [StudentCohort] = []
 
-    private var filteredStudents: [InstituteStudent] {
-        guard !searchText.isEmpty else { return students }
-        return students.filter {
-            "\($0.fullName) \($0.email) \($0.studentNumber)".localizedCaseInsensitiveContains(searchText)
+    private func makeCohorts(_ students: [InstituteStudent]) -> [StudentCohort] {
+        let groups = Dictionary(grouping: students) {
+            ($0.cohort?.isEmpty == false ? $0.cohort! : ($0.programme.isEmpty ? $0.institute : $0.programme))
+        }
+        return groups.keys.sorted().map { name in
+            StudentCohort(name: name, students: groups[name, default: []].map(\.profile))
         }
     }
 
     var body: some View {
-        List {
-            if isLoading {
+        Group {
+            if isLoading && students.isEmpty {
                 ProgressView("Loading institute students…")
             } else if let errorMessage {
-                Text(errorMessage).foregroundStyle(.red)
-                Button("Try Again") { Task { await load() } }
-            } else if students.isEmpty {
-                ContentUnavailableView("No students yet", systemImage: "graduationcap",
-                    description: Text("Institute student accounts will appear here."))
-            } else if filteredStudents.isEmpty {
-                ContentUnavailableView.search(text: searchText)
-            } else {
-                Section("\(filteredStudents.count) students") {
-                    ForEach(filteredStudents) { student in
-                        VStack(alignment: .leading, spacing: 5) {
-                            Text(student.fullName).font(.headline)
-                            Text(student.email).font(.subheadline)
-                            Text("\(student.institute) · \(student.programme)")
-                                .font(.caption).foregroundStyle(.secondary)
-                            Text(student.studentNumber).font(.caption).foregroundStyle(.secondary)
-                        }
-                        .padding(.vertical, 4)
-                        .accessibilityElement(children: .combine)
-                    }
+                ContentUnavailableView {
+                    Label("Unable to load students", systemImage: "wifi.exclamationmark")
+                } description: { Text(errorMessage) } actions: {
+                    Button("Try Again") { Task { await load() } }
                 }
+            } else {
+                StudentCohortListView(cohorts: cohorts,
+                    onSaveStudent: { cohortID, student in
+                        let name = cohorts.first(where: { $0.id == cohortID })?.name ?? "MCRI"
+                        try await InstituteDashboardService.inviteStudent(student, cohortName: name)
+                    },
+                    onStudentAdded: { Task { await load() } })
+                    .id(revision)
+                    .refreshable { await load() }
             }
         }
-        .searchable(text: $searchText, prompt: "Find a student")
-        .refreshable { await load() }
         .task { await load() }
     }
 
@@ -83,10 +104,14 @@ struct InstituteStudentsView: View {
             let result = try await InstituteDashboardService.loadStudents()
             try Task.checkCancellation()
             students = result
-        } catch is CancellationError {
-            return
-        } catch {
-            errorMessage = "Unable to load students. Check your connection and ensure the institute dashboard database setup is installed."
+            cohorts = makeCohorts(result)
+            revision = UUID()
+        } catch is CancellationError { return }
+        catch {
+            #if DEBUG
+            debugPrint("Student directory load failed:", error)
+            #endif
+            errorMessage = "Check your connection and try again."
         }
     }
 }

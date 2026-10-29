@@ -98,7 +98,8 @@ private struct AdministratorDashboardContent: View {
     @State private var snapshot: AdministratorDashboardSnapshot?
     @State private var isLoading = true
     @State private var errorMessage: String?
-    @State private var path: [AdministratorDashboardDestination] = []
+    @State private var path = NavigationPath()
+    @State private var selectedTab: AdministratorDashboardDestination?
 
     private let columns = [GridItem(.flexible()), GridItem(.flexible())]
 
@@ -107,7 +108,7 @@ private struct AdministratorDashboardContent: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 22) {
                     header
-                    if isLoading {
+                    if isLoading && snapshot == nil {
                         ProgressView("Loading platform statistics…")
                             .frame(maxWidth: .infinity, minHeight: 220)
                             .accessibilityIdentifier("admin.loading")
@@ -135,18 +136,24 @@ private struct AdministratorDashboardContent: View {
         .safeAreaInset(edge: .bottom, spacing: 0) { bottomNavigation }
         .tint(AdministratorDashboardStyle.orange)
         .task { await refresh() }
+        .onChange(of: path.count) { _, count in
+            if count == 0 {
+                selectedTab = nil
+                Task { await refresh() }
+            }
+        }
     }
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack {
-                Button { path.append(.adminRequests) } label: {
+                Button { open(.adminRequests) } label: {
                     Label("Admin Requests", systemImage: "person.badge.shield.checkmark")
                         .font(.subheadline.weight(.semibold))
                         .frame(minHeight: 44)
                 }
                 Spacer()
-                Button { path.append(.notifications) } label: {
+                Button { open(.notifications) } label: {
                     Image(systemName: "bell")
                         .font(.system(size: 17))
                         .foregroundStyle(AdministratorDashboardStyle.charcoal)
@@ -206,7 +213,7 @@ private struct AdministratorDashboardContent: View {
 
         VStack(alignment: .leading, spacing: 10) {
             sectionTitle("Quick Actions")
-            Button { path.append(.addStudent) } label: {
+            Button { open(.addStudent) } label: {
                 HStack {
                     Image(systemName: "person.badge.plus")
                     Spacer()
@@ -219,7 +226,7 @@ private struct AdministratorDashboardContent: View {
                 .frame(minHeight: 48)
                 .background(AdministratorDashboardStyle.orange, in: RoundedRectangle(cornerRadius: 9))
             }
-            Button { path.append(.students) } label: {
+            Button { open(.students) } label: {
                 HStack(spacing: 18) {
                     Text("Manage Students").fontWeight(.semibold)
                     Image(systemName: "arrow.right")
@@ -262,7 +269,7 @@ private struct AdministratorDashboardContent: View {
     }
 
     private func summaryLink(count: Int, title: String, icon: String, route: AdministratorDashboardDestination) -> some View {
-        Button { path.append(route) } label: {
+        Button { open(route) } label: {
             HStack(spacing: 8) {
                 Image(systemName: icon)
                     .font(.title3)
@@ -323,9 +330,11 @@ private struct AdministratorDashboardContent: View {
     }
 
     private func navigationItem(_ title: String, icon: String, route: AdministratorDashboardDestination?) -> some View {
-        let selected = path.last == route
+        let selected = selectedTab == route
         return Button {
-            if let route { path = [route] } else { path = [] }
+            path = NavigationPath()
+            selectedTab = route
+            if let route { path.append(route) }
         } label: {
             VStack(spacing: 3) {
                 Image(systemName: icon).font(.system(size: 23))
@@ -343,6 +352,16 @@ private struct AdministratorDashboardContent: View {
         }
         .buttonStyle(.plain)
         .accessibilityAddTraits(selected ? [.isSelected] : [])
+    }
+
+    private func open(_ route: AdministratorDashboardDestination) {
+        switch route {
+        case .students, .addStudent: selectedTab = .students
+        case .approvals, .adminRequests: selectedTab = .approvals
+        case .settings: selectedTab = .settings
+        case .notifications, .reportedIssues: selectedTab = nil
+        }
+        path.append(route)
     }
 
     private func errorState(_ message: String) -> some View {
@@ -368,9 +387,6 @@ private struct AdministratorDashboardContent: View {
             snapshot = result
         } catch is CancellationError {
             return
-        } catch let error as AdministratorDashboardConnectionError {
-            snapshot = nil
-            errorMessage = error.localizedDescription
         } catch {
             snapshot = nil
             errorMessage = "Check your connection and try again."

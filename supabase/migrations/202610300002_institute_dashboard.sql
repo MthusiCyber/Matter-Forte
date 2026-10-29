@@ -12,7 +12,7 @@ begin
     end if;
     return query
     select u.id, coalesce(u.raw_user_meta_data ->> 'full_name', 'Student'),
-        coalesce(u.email, ''), coalesce(u.raw_user_meta_data ->> 'institute', ''),
+        coalesce(u.email::text, ''), coalesce(u.raw_user_meta_data ->> 'institute', ''),
         coalesce(u.raw_user_meta_data ->> 'programme', ''),
         coalesce(u.raw_user_meta_data ->> 'student_number', '')
     from auth.users u where u.raw_app_meta_data ->> 'role' = 'student'
@@ -46,7 +46,7 @@ begin
     -- have not been implemented in this project; no records are seeded for them.
     return jsonb_build_object('totalStudents', student_count, 'activeInternships', 0,
         'pendingApprovals', pending_count, 'reportedIssues', 0,
-        'unreadNotifications', 0, 'recentActivity', activity);
+        'unreadNotifications', pending_count, 'recentActivity', activity);
 end;
 $$;
 revoke all on function public.matter_forte_dashboard_snapshot() from public, anon;
