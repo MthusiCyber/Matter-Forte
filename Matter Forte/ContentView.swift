@@ -46,7 +46,7 @@ struct ContentView: View {
         case .administrator:
             AdministratorDashboardView(session: session, loadDashboard: InstituteDashboardService.loadDashboard) { route in
                 switch route {
-                case .students: return AnyView(InstituteStudentsView())
+                case .students: return AnyView(StudentView())
                 case .addStudent: return AnyView(AddCohortStudentView(
                     cohorts: [StudentCohort(name: "MCRI", students: [])],
                     usesNavigationStack: false,

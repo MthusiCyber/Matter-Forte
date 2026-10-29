@@ -60,42 +60,36 @@ nonisolated struct InstituteStudent: Decodable, Identifiable, Sendable {
 }
 
 struct InstituteStudentsView: View {
-    @State private var students: [InstituteStudent] = []
     @State private var isLoading = true
     @State private var errorMessage: String?
-    @State private var revision = UUID()
     @State private var cohorts: [StudentCohort] = []
+    @State private var cohortIDs: [String: UUID] = [:]
 
     private func makeCohorts(_ students: [InstituteStudent]) -> [StudentCohort] {
         let groups = Dictionary(grouping: students) {
-            ($0.cohort?.isEmpty == false ? $0.cohort! : ($0.programme.isEmpty ? $0.institute : $0.programme))
+            let name = $0.cohort?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            return name.isEmpty ? ($0.programme.isEmpty ? ($0.institute.isEmpty ? "MCRI" : $0.institute) : $0.programme) : name
         }
         return groups.keys.sorted().map { name in
-            StudentCohort(name: name, students: groups[name, default: []].map(\.profile))
+            let id = cohortIDs[name] ?? UUID()
+            cohortIDs[name] = id
+            return StudentCohort(id: id, name: name, students: groups[name, default: []].map(\.profile))
         }
     }
 
     var body: some View {
-        Group {
-            if isLoading && students.isEmpty {
-                ProgressView("Loading institute students…")
-            } else if let errorMessage {
-                ContentUnavailableView {
-                    Label("Unable to load students", systemImage: "wifi.exclamationmark")
-                } description: { Text(errorMessage) } actions: {
-                    Button("Try Again") { Task { await load() } }
-                }
-            } else {
-                StudentCohortListView(cohorts: cohorts,
-                    onSaveStudent: { cohortID, student in
-                        let name = cohorts.first(where: { $0.id == cohortID })?.name ?? "MCRI"
-                        _ = try await InstituteDashboardService.saveStudent(student, cohortName: name)
-                    },
-                    onStudentAdded: { Task { await load() } })
-                    .id(revision)
-                    .refreshable { await load() }
-            }
-        }
+        StudentCohortListView(
+            cohorts: cohorts,
+            isLoading: isLoading,
+            loadError: errorMessage,
+            onRetry: { Task { await load() } },
+            onSaveStudent: { cohortID, student in
+                let name = cohorts.first(where: { $0.id == cohortID })?.name ?? "MCRI"
+                _ = try await InstituteDashboardService.saveStudent(student, cohortName: name)
+            },
+            onStudentAdded: { Task { await load() } }
+        )
+        .refreshable { await load() }
         .task { await load() }
     }
 
@@ -106,9 +100,7 @@ struct InstituteStudentsView: View {
         do {
             let result = try await InstituteDashboardService.loadStudents()
             try Task.checkCancellation()
-            students = result
             cohorts = makeCohorts(result)
-            revision = UUID()
         } catch is CancellationError { return }
         catch {
             #if DEBUG

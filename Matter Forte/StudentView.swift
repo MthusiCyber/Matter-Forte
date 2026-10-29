@@ -3,10 +3,8 @@ import SwiftUI
 
 struct StudentView: View {
     var body: some View {
-        NavigationStack {
-            InstituteStudentsView()
-        }
-        .tint(StudentDirectoryStyle.orange)
+        InstituteStudentsView()
+            .tint(StudentDirectoryStyle.orange)
     }
 }
 
@@ -71,7 +69,10 @@ nonisolated struct StudentCohort: Identifiable, Sendable {
 }
 
 struct StudentCohortListView: View {
-    @State private var cohorts: [StudentCohort]
+    let cohorts: [StudentCohort]
+    let isLoading: Bool
+    let loadError: String?
+    let onRetry: () -> Void
     let onSaveStudent: ((UUID, CohortStudent) async throws -> Void)?
     let onStudentAdded: () -> Void
     @State private var searchText = ""
@@ -81,9 +82,15 @@ struct StudentCohortListView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     init(cohorts: [StudentCohort] = [],
+         isLoading: Bool = false,
+         loadError: String? = nil,
+         onRetry: @escaping () -> Void = {},
          onSaveStudent: ((UUID, CohortStudent) async throws -> Void)? = nil,
          onStudentAdded: @escaping () -> Void = {}) {
-        _cohorts = State(initialValue: cohorts)
+        self.cohorts = cohorts
+        self.isLoading = isLoading
+        self.loadError = loadError
+        self.onRetry = onRetry
         self.onSaveStudent = onSaveStudent
         self.onStudentAdded = onStudentAdded
     }
@@ -121,13 +128,30 @@ struct StudentCohortListView: View {
                     .accessibilityAddTraits(.isHeader)
 
                 LazyVStack(spacing: 12) {
-                    if filteredCohorts.isEmpty {
+                    if isLoading {
+                        ProgressView("Loading institute students…")
+                            .frame(maxWidth: .infinity, minHeight: 80)
+                    }
+                    if let loadError {
+                        VStack(alignment: .leading, spacing: 10) {
+                            Label("Unable to refresh students", systemImage: "exclamationmark.triangle")
+                                .font(.headline)
+                            Text(loadError).font(.subheadline)
+                            Button("Try Again", action: onRetry)
+                                .buttonStyle(.bordered)
+                        }
+                        .foregroundStyle(.primary)
+                        .padding(16)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(StudentDirectoryStyle.orange.opacity(0.08), in: RoundedRectangle(cornerRadius: 14))
+                    }
+                    if filteredCohorts.isEmpty && !isLoading && loadError == nil {
                         VStack(spacing: 12) {
                             Image(systemName: "person.crop.circle.badge.questionmark")
                                 .font(.largeTitle)
                             Text(cohorts.isEmpty ? "No cohorts yet" : "No matching students or cohorts")
                                 .font(.headline)
-                            Text(cohorts.isEmpty ? "Add cohorts to your data to get started." : "Try another name or clear your search.")
+                            Text(cohorts.isEmpty ? "Add the first student to start your institute directory." : "Try another name or clear your search.")
                                 .font(.subheadline)
                         }
                         .foregroundStyle(.secondary)
@@ -162,7 +186,7 @@ struct StudentCohortListView: View {
                         .font(.title2)
                         .foregroundStyle(.primary)
                 }
-                .disabled(cohorts.isEmpty || onSaveStudent == nil)
+                .disabled(onSaveStudent == nil)
                 .accessibilityLabel("Add a student")
             }
         }
@@ -171,7 +195,10 @@ struct StudentCohortListView: View {
         }
         .sheet(isPresented: $showingAddStudent, onDismiss: onStudentAdded) {
             if let onSaveStudent {
-                AddCohortStudentView(cohorts: cohorts, onSave: onSaveStudent)
+                AddCohortStudentView(
+                    cohorts: cohorts.isEmpty ? [StudentCohort(name: "MCRI", students: [])] : cohorts,
+                    onSave: onSaveStudent
+                )
             }
         }
     }
@@ -588,6 +615,6 @@ struct AddCohortStudentView: View {
 
 struct StudentView_Previews: PreviewProvider {
     static var previews: some View {
-        StudentView()
+        NavigationStack { StudentView() }
     }
 }
