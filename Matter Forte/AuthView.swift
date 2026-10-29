@@ -1,3 +1,5 @@
+<<<<<<< HEAD
+=======
 ////
 //import SwiftUI
 //
@@ -427,6 +429,7 @@
 //    }
 //}
 
+>>>>>>> origin/main
 import SwiftUI
 
 private enum AuthStyle {
@@ -436,7 +439,6 @@ private enum AuthStyle {
         blue: 0.21
     )
 
-    // Darker orange keeps small text readable on the pale background.
     static let textOrange = Color(
         red: 0.66,
         green: 0.23,
@@ -448,6 +450,7 @@ struct AuthView: View {
     @ObservedObject var model: AuthViewModel
 
     @FocusState private var focused: Field?
+    @State private var legalPage: LegalPage?
 
     private enum Field: Hashable {
         case fullName
@@ -575,6 +578,9 @@ struct AuthView: View {
                     .padding(.top, 16)
 
                     if model.isRegistering {
+<<<<<<< HEAD
+                        registrationLegalLinks.padding(.top, 8)
+=======
                         Text(
                             "By creating an Account you agree to our Terms of Service and Privacy Policy."
                         )
@@ -583,6 +589,7 @@ struct AuthView: View {
                         .foregroundStyle(AuthStyle.textOrange)
                         .multilineTextAlignment(.center)
                         .padding(.top, 8)
+>>>>>>> origin/main
                     }
                 }
                 .frame(maxWidth: 430)
@@ -610,6 +617,53 @@ struct AuthView: View {
         }
         .buttonStyle(.plain)
         .preferredColorScheme(.light)
+        .sheet(item: $legalPage) { page in
+            LegalFlowView(
+                startingPage: page,
+                onAgree: { document in try model.acceptTerms(document) },
+                onFinish: { legalPage = nil }
+            )
+        }
+    }
+
+    private var registrationLegalLinks: some View {
+        VStack(spacing: 4) {
+            Text("Before creating an account, please review:")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+            Button {
+                focused = nil
+                legalPage = .terms
+            } label: {
+                Text("Terms of Service")
+                    .font(.callout.weight(.semibold))
+                    .frame(maxWidth: .infinity, minHeight: 44)
+                    .contentShape(Rectangle())
+            }
+            Button {
+                focused = nil
+                legalPage = .privacy
+            } label: {
+                Text("Privacy Policy")
+                    .font(.callout.weight(.semibold))
+                    .frame(maxWidth: .infinity, minHeight: 44)
+                    .contentShape(Rectangle())
+            }
+            if model.hasAcceptedCurrentTerms {
+                Label("Terms accepted", systemImage: "checkmark.circle.fill")
+                    .font(.footnote)
+                    .accessibilityLabel("You accepted the current Terms of Service.")
+            }
+            if let error = model.errors["terms"] {
+                Text(error)
+                    .font(.footnote)
+                    .foregroundStyle(.red)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .foregroundStyle(AuthStyle.textOrange)
+        .multilineTextAlignment(.center)
+        .disabled(model.isLoading)
     }
 
     private var loginFields: some View {
@@ -736,7 +790,6 @@ struct AuthView: View {
         @ViewBuilder content: () -> Content
     ) -> some View {
         VStack(alignment: .leading, spacing: 6) {
-            // Persistent labels remain visible after users start typing.
             Text(label)
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.secondary)
@@ -779,6 +832,8 @@ struct AuthView: View {
     }
 }
 
+<<<<<<< HEAD
+=======
 /// Vector approximation from the supplied screenshot.
 /// Use an official logo asset when available.
 private struct BrandLogo: View {
@@ -855,3 +910,4 @@ private struct BrandLogo: View {
         .accessibilityLabel("Matter Forte")
     }
 }
+>>>>>>> origin/main
