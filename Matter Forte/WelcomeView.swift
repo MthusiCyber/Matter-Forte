@@ -14,7 +14,9 @@ extension Color {
 }
 
 struct MatterForteAppView: View {
+    @StateObject private var authModel = AuthViewModel(client: SupabaseConfig.client)
     @State private var showingNextView = false
+    @AppStorage("settings.darkAppearance") private var darkAppearance = false
     
     var body: some View {
         NavigationStack {
@@ -23,12 +25,21 @@ struct MatterForteAppView: View {
             }
             .toolbar(.hidden, for: .navigationBar)
             .navigationDestination(isPresented: $showingNextView) {
-                ContentView()
+                ContentView(model: authModel)
                     .navigationBarBackButtonHidden(true)
                     .toolbar(.hidden, for: .navigationBar)
             }
         }
-        .preferredColorScheme(.light)
+        .preferredColorScheme(showingNextView && darkAppearance ? .dark : .light)
+        .task { await authModel.observeAuthChanges() }
+        .onOpenURL { url in
+            guard url.scheme?.lowercased() == "matterforte",
+                  url.host?.lowercased() == "auth",
+                  url.path == "/callback" else { return }
+            // Receive confirmation links even when the app opens on the welcome screen.
+            showingNextView = true
+            Task { await authModel.handleAuthCallback(url) }
+        }
     }
 }
 

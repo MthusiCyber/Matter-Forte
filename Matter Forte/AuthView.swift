@@ -9,6 +9,7 @@ private enum AuthStyle {
 struct AuthView: View {
     @ObservedObject var model: AuthViewModel
     @FocusState private var focused: Field?
+    @State private var showingFeedback = false
     private enum Field: Hashable { case fullName, email, password, confirmation }
 
     var body: some View {
@@ -66,8 +67,9 @@ struct AuthView: View {
                         focused = nil
                         model.switchMode()
                     } label: {
-                        (Text(model.isRegistering ? "Already have an Account? " : "Don’t have an account? ")
-                         + Text(model.isRegistering ? "Log In" : "Sign Up.").bold())
+                        (model.isRegistering
+                         ? Text("Already have an Account? \(Text("Log In").bold())")
+                         : Text("Don’t have an account? \(Text("Sign Up.").bold())"))
                             .font(.callout).foregroundStyle(AuthStyle.textOrange)
                             .multilineTextAlignment(.center)
                             .frame(maxWidth: .infinity, minHeight: 44)
@@ -89,6 +91,29 @@ struct AuthView: View {
                                        startPoint: .topLeading, endPoint: .bottomTrailing).ignoresSafeArea())
         }
         .preferredColorScheme(.light)
+        .toolbar {
+            ToolbarItemGroup(placement: .keyboard) {
+                Spacer()
+                Button("Done") { focused = nil }
+            }
+        }
+        .onChange(of: model.message) { _, message in
+            if message != nil {
+                focused = nil
+                showingFeedback = true
+            }
+        }
+        .onChange(of: model.notice) { _, notice in
+            if notice != nil {
+                focused = nil
+                showingFeedback = true
+            }
+        }
+        .alert(model.message == nil ? "Check Your Email" : "Unable to Continue", isPresented: $showingFeedback) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(model.message ?? model.notice ?? "")
+        }
     }
 
     private var loginFields: some View {
@@ -127,7 +152,10 @@ struct AuthView: View {
                 SecureField("Confirm Password", text: $model.confirmation)
                     .textContentType(.newPassword)
                     .focused($focused, equals: .confirmation).submitLabel(.go)
-                    .onSubmit { Task { await model.submit() } }
+                    .onSubmit {
+                        focused = nil
+                        Task { await model.submit() }
+                    }
             }
         }.disabled(model.isLoading)
     }
@@ -150,7 +178,10 @@ struct AuthView: View {
                 .submitLabel(model.isRegistering ? .next : .go)
                 .onSubmit {
                     if model.isRegistering { focused = .confirmation }
-                    else { Task { await model.submit() } }
+                    else {
+                        focused = nil
+                        Task { await model.submit() }
+                    }
                 }
         }
     }
@@ -173,30 +204,3 @@ struct AuthView: View {
     }
 }
 
-/// Vector approximation from the supplied screenshot. Use an official logo asset when available.
-private struct BrandLogo: View {
-    var body: some View {
-        VStack(spacing: 10) {
-            GeometryReader { proxy in
-                Path { path in
-                    let w = proxy.size.width, h = proxy.size.height
-                    path.move(to: CGPoint(x: w * 0.54, y: h * 0.06))
-                    path.addLine(to: CGPoint(x: w * 0.88, y: h * 0.25))
-                    path.addLine(to: CGPoint(x: w * 0.88, y: h * 0.78))
-                    path.move(to: CGPoint(x: w * 0.88, y: h * 0.25))
-                    path.addLine(to: CGPoint(x: w * 0.50, y: h * 0.46))
-                    path.addLine(to: CGPoint(x: w * 0.15, y: h * 0.29))
-                    path.addLine(to: CGPoint(x: w * 0.15, y: h * 0.80))
-                    path.addLine(to: CGPoint(x: w * 0.49, y: h * 0.96))
-                }
-                .stroke(LinearGradient(colors: [AuthStyle.orange, Color(red: 0.65, green: 0.17, blue: 0.13)],
-                                       startPoint: .bottomLeading, endPoint: .topTrailing),
-                        style: StrokeStyle(lineWidth: 8, lineCap: .square, lineJoin: .miter))
-            }.frame(width: 76, height: 76)
-            Text("MATTER").font(.system(size: 27, weight: .semibold)).tracking(7)
-                .foregroundStyle(Color(red: 0.40, green: 0.30, blue: 0.34))
-            Text("FORTE").font(.system(size: 11)).tracking(8).foregroundStyle(.secondary)
-        }
-        .accessibilityElement(children: .ignore).accessibilityLabel("Matter Forte")
-    }
-}

@@ -3,37 +3,37 @@ import Auth
 
 @MainActor
 struct ContentView: View {
-    @StateObject private var model = AuthViewModel(client: SupabaseConfig.client)
+    @ObservedObject var model: AuthViewModel
+    @State private var accountDestination: SettingsAccountDestination?
 
     var body: some View {
         Group {
             if model.isRestoringSession {
                 ProgressView("Restoring session…")
             } else if let session = model.authenticatedSession {
-                // Replace this NavigationStack with your actual MainApplicationView.
-                NavigationStack {
-                    VStack(spacing: 24) {
-                        Text("Welcome to Matter Forte").font(.title2)
-                        Text(session.user.email ?? "Signed in")
-                            .foregroundStyle(.secondary)
-                        if let message = model.message {
-                            Text(message).foregroundStyle(.red).multilineTextAlignment(.center)
+                SettingsView(
+                    isSigningOut: model.isLoading,
+                    signOutError: model.message,
+                    onEditProfile: { accountDestination = .profile },
+                    onChangePassword: { accountDestination = .password },
+                    onSignOut: { Task { await model.signOut() } }
+                )
+                .sheet(item: $accountDestination) { destination in
+                    SettingsAccountForm(
+                        destination: destination,
+                        initialName: model.profileName,
+                        initialEmail: session.user.email ?? "",
+                        saveProfile: { name, email in
+                            try await model.updateProfile(name: name, email: email)
+                        },
+                        savePassword: { password in
+                            try await model.updatePassword(password)
                         }
-                        Button(model.isLoading ? "Signing Out…" : "Sign Out") {
-                            Task { await model.signOut() }
-                        }
-                        .disabled(model.isLoading)
-                    }
-                    .padding()
-                    .navigationTitle("Home")
+                    )
                 }
             } else {
                 AuthView(model: model)
             }
-        }
-        .task { await model.observeAuthChanges() }
-        .onOpenURL { url in
-            Task { await model.handleAuthCallback(url) }
         }
     }
 }
