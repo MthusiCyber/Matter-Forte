@@ -23,11 +23,31 @@ final class AuthViewModel: ObservableObject {
     @Published private(set) var notice: String?
     @Published private(set) var authenticatedSession: Auth.Session?
 
+    @Published private(set) var termsAcceptance: TermsAcceptance?
     private let client: SupabaseClient
+    private let agreementStore: TermsAgreementStore
+    private var registrationDraftID = UUID()
     private var isObserving = false
 
-    init(client: SupabaseClient) {
+    init(client: SupabaseClient, agreementStore: TermsAgreementStore? = nil) {
         self.client = client
+        self.agreementStore = agreementStore ?? TermsAgreementStore()
+    }
+
+    var hasAcceptedCurrentTerms: Bool {
+        termsAcceptance?.matches(document: LegalCopy.terms, draftID: registrationDraftID) == true
+    }
+
+    /// Save first, then mark the draft accepted. A failed write leaves the legal page open.
+    func acceptTerms(_ document: LegalDocument) throws {
+        guard document.version == LegalCopy.terms.version else {
+            throw TermsAgreementError.outdatedDocument
+        }
+        let receipt = TermsAcceptance(draftID: registrationDraftID,
+                                      termsVersion: document.version, acceptedAt: Date())
+        try agreementStore.save(receipt)
+        termsAcceptance = receipt
+        errors["terms"] = nil
     }
 
     /// Call from a task on the persistent root view, not on the login screen.
@@ -70,6 +90,8 @@ final class AuthViewModel: ObservableObject {
     func switchMode() {
         guard !isLoading else { return }
         isRegistering.toggle()
+        termsAcceptance = nil
+        registrationDraftID = UUID()
         password = ""
         confirmation = ""
         errors = [:]
@@ -88,18 +110,27 @@ final class AuthViewModel: ObservableObject {
 
         do {
             if isRegistering {
+                guard let agreement = termsAcceptance, hasAcceptedCurrentTerms else {
+                    errors["terms"] = "Read the Terms of Service and select I Agree before creating your account."
+                    return
+                }
                 let result = try await client.auth.signUp(
                     email: email,
                     password: password,
                     data: [
                         "full_name": .string(fullName.trimmingCharacters(in: .whitespacesAndNewlines)),
                         // User-editable preference only; never use this to authorize admin access.
-                        "requested_role": .string(role.rawValue)
+                        "requested_role": .string(role.rawValue),
+                        "terms_version": .string(agreement.termsVersion),
+                        "terms_accepted_at": .string(ISO8601DateFormatter().string(from: agreement.acceptedAt)),
+                        "terms_draft_id": .string(agreement.draftID.uuidString)
                     ],
                     redirectTo: SupabaseConfig.redirectURL
                 )
                 password = ""
                 confirmation = ""
+                termsAcceptance = nil
+                registrationDraftID = UUID()
                 if let session = result.session {
                     authenticatedSession = session
                 } else {
@@ -163,6 +194,9 @@ final class AuthViewModel: ObservableObject {
         // Never trim a password or silently change what the user entered.
         if password.isEmpty { errors["password"] = "Enter your password." }
         if isRegistering {
+            if !hasAcceptedCurrentTerms {
+                errors["terms"] = "Read the Terms of Service and select I Agree before creating your account."
+            }
             if fullName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 errors["fullName"] = "Enter your full name."
             }
@@ -206,3 +240,4 @@ final class AuthViewModel: ObservableObject {
         return "We couldn’t complete your request. Check your connection and try again. Your email is still here."
     }
 }
+
