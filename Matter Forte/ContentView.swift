@@ -10,6 +10,7 @@ import Helpers
 struct ContentView: View {
     @StateObject private var model = AuthViewModel(client: SupabaseConfig.client)
     @State private var launchStage: AppLaunchStage = .splash
+    @AppStorage("settings.darkAppearance") private var darkAppearance = false
 
     var body: some View {
         Group {
@@ -28,6 +29,7 @@ struct ContentView: View {
             }
         }
         .tint(.appOrange)
+        .preferredColorScheme(model.authenticatedSession != nil && darkAppearance ? .dark : .light)
         .task { await model.observeAuthChanges() }
         .onChange(of: model.authenticatedSession?.user.id) { old, new in
             if old != nil && new == nil { launchStage = .authentication }
@@ -48,7 +50,7 @@ struct ContentView: View {
                 case .addStudent: return AnyView(AddCohortStudentView(
                     cohorts: [StudentCohort(name: "MCRI", students: [])],
                     usesNavigationStack: false,
-                    onSave: { _, student in try await InstituteDashboardService.inviteStudent(student) }
+                    onSave: { _, student in _ = try await InstituteDashboardService.saveStudent(student) }
                 ))
                 case .approvals, .adminRequests: return AnyView(AdministratorRequestsView(client: SupabaseConfig.client))
                 case .notifications: return AnyView(AdministratorNotificationsView())
@@ -58,15 +60,16 @@ struct ContentView: View {
                         description: Text("Issue reporting is not yet available for this platform.")))
                 }
             }
-        case .student:
+        case .restrictedAccount:
             NavigationStack {
-                CohortStudentProfileView(student: ownStudentProfile(session),
-                    cohortName: metadataString(session.user.userMetadata["cohort"]) ?? "MCRI")
-                    .toolbar { ToolbarItem(placement: .topBarTrailing) {
-                        NavigationLink { AccountSettingsView(model: model) } label: {
-                            Label("Settings", systemImage: "gearshape")
-                        }
-                    } }
+                VStack(spacing: 20) {
+                    Image(systemName: "lock.shield").font(.largeTitle).foregroundStyle(Color.appOrange)
+                    Text("Account access unavailable").font(.title2.bold())
+                    Text("Student portfolios are managed by institute administrators. Students do not have app access.")
+                    Button("Sign Out") { Task { await model.signOut() } }
+                        .buttonStyle(.borderedProminent).disabled(model.isLoading)
+                }
+                .multilineTextAlignment(.center).padding()
             }
         case .pendingAdministrator:
             NavigationStack {
@@ -90,25 +93,9 @@ struct ContentView: View {
         }
     }
 
-    private func ownStudentProfile(_ session: Auth.Session) -> CohortStudent {
-        let data = session.user.userMetadata
-        return CohortStudent(id: session.user.id,
-            fullName: metadataString(data["full_name"]) ?? "Student",
-            email: session.user.email ?? "",
-            university: metadataString(data["institute"]) ?? "MCRI",
-            fieldOfStudy: metadataString(data["programme"]) ?? "",
-            biography: metadataString(data["biography"]) ?? "",
-            skills: metadataStrings(data["skills"]),
-            essentialSkills: metadataStrings(data["essential_skills"]))
-    }
 }
 
 private func metadataString(_ value: AnyJSON?) -> String? {
     guard case let .string(string) = value else { return nil }
     return string
-}
-
-private func metadataStrings(_ value: AnyJSON?) -> [String] {
-    guard case let .array(values) = value else { return [] }
-    return values.compactMap { metadataString($0) }
 }

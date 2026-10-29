@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""Create 20 new MCRI test accounts through Supabase Auth's Admin API.
+"""Create 2 MCRI test admin accounts and 18 administrator-managed student portfolios.
 
 No package installation required. A project secret/service-role key is prompted
 securely or read from SUPABASE_SECRET_KEY / SUPABASE_SERVICE_ROLE_KEY.
 The privileged key is never saved. Reruns reuse this batch without duplicates.
+Students are database records only and do not receive authentication accounts.
 """
 import argparse
 import getpass
@@ -89,64 +90,83 @@ def save_credentials(path, data):
 
 
 def seed(api, plan, credential_path):
-    existing = {user["email"].lower(): user for user in api.users() if user.get("email")}
+    admins = [row for row in plan if row["role"] == "admin"]
+    students = [row for row in plan if row["role"] == "student"]
+    if len(admins) != 2 or len(students) != 18:
+        raise RuntimeError("Expected exactly two admins and eighteen student records.")
+    auth_users = {user["email"].lower(): user for user in api.users() if user.get("email")}
+    table = "/rest/v1/matter_forte_students"
+    profiles = {row["email"].lower(): row for row in api.request("GET", table + "?select=id,email,seed_batch")}
     saved = json.loads(credential_path.read_text()) if credential_path.exists() else {
         "project_url": PROJECT_URL, "seed_batch": BATCH, "accounts": []}
     if saved.get("project_url") != PROJECT_URL or saved.get("seed_batch") != BATCH:
         raise RuntimeError("The credentials file belongs to a different project or seed batch.")
-    passwords = {row["email"]: row for row in saved["accounts"]}
-    # Preflight every address before making changes. Never overwrite an unrelated user.
-    for account in plan:
-        user = existing.get(account["email"])
+    logins = {row["email"]: row for row in saved["accounts"] if row.get("role") == "admin"}
+    # Check both datasets before creating any accounts or changing any records.
+    for account in admins:
+        user = auth_users.get(account["email"])
         if user and user.get("app_metadata", {}).get("seed_batch") != BATCH:
             raise RuntimeError(f"Address collision: {account['email']} is not owned by this seed batch.")
-        if user and account["email"] not in passwords:
-            raise RuntimeError("An existing test account has no saved login. Reuse the original credentials file; no password was reset.")
-    for account in plan:
+        if user and account["email"] not in logins:
+            raise RuntimeError("An existing test admin has no saved login. Reuse the original credentials file; no password was reset.")
+    for student in students:
+        profile = profiles.get(student["email"])
+        if profile and profile.get("seed_batch") != BATCH:
+            raise RuntimeError(f"Student address collision: {student['email']} is not owned by this seed batch.")
+    saved["student_profiles"] = []
+    for account in admins:
         email = account["email"]
-        if email not in passwords:
-            passwords[email] = dict(account, password=secrets.token_urlsafe(20) + "aA1!")
-        saved["accounts"] = list(passwords.values())
-        # Save before the API request so a retry can recover after an interruption.
+        if email not in logins:
+            logins[email] = dict(account, password=secrets.token_urlsafe(20) + "aA1!")
+        saved["accounts"] = list(logins.values())
         save_credentials(credential_path, saved)
-        user = existing.get(email)
-        user_metadata = {key: value for key, value in account.items() if key not in ("role", "email")}
-        user_metadata.update(requested_role=account["role"], seed_batch=BATCH)
-        app_metadata = {"role": account["role"], "seed_batch": BATCH}
-        if account["role"] == "admin":
-            app_metadata["admin_request_status"] = "approved"
+        metadata = {key: value for key, value in account.items() if key not in ("role", "email")}
+        metadata.update(requested_role="admin", seed_batch=BATCH)
+        app_metadata = {"role": "admin", "seed_batch": BATCH, "admin_request_status": "approved"}
+        user = auth_users.get(email)
         if user is None:
             result = api.request("POST", "/auth/v1/admin/users", {
-                "email": email, "password": passwords[email]["password"],
-                "email_confirm": True, "user_metadata": user_metadata, "app_metadata": app_metadata,
+                "email": email, "password": logins[email]["password"], "email_confirm": True,
+                "user_metadata": metadata, "app_metadata": app_metadata,
             })
             user = result.get("user", result)
-        # Signup triggers may initially mark the second admin pending. The Admin
-        # API explicitly grants the two test admins the requested server role.
         result = api.request("PUT", f"/auth/v1/admin/users/{user['id']}", {
-            "app_metadata": app_metadata, "user_metadata": user_metadata, "email_confirm": True,
+            "app_metadata": app_metadata, "user_metadata": metadata, "email_confirm": True,
         })
         user = result.get("user", result)
-        if user.get("app_metadata", {}).get("role") != account["role"]:
+        if user.get("app_metadata", {}).get("role") != "admin":
             raise RuntimeError(f"Role verification failed for {email}.")
-        if account["role"] == "admin":
-            api.request("PATCH", f"/rest/v1/matter_forte_admin_requests?user_id=eq.{user['id']}",
-                {"status": "approved"}, allow_missing=True)
-        passwords[email]["user_id"] = user["id"]
+        api.request("PATCH", f"/rest/v1/matter_forte_admin_requests?user_id=eq.{user['id']}",
+                    {"status": "approved"}, allow_missing=True)
+        logins[email]["user_id"] = user["id"]
         save_credentials(credential_path, saved)
-        print(f"Ready: {email} ({account['role']})", flush=True)
-    # Verify all twenty through an independent listing, rather than request status alone.
-    verified = {user["email"].lower(): user for user in api.users() if user.get("email")}
-    for account in plan:
-        user = verified.get(account["email"], {})
-        if user.get("app_metadata", {}).get("role") != account["role"] or not user.get("email_confirmed_at"):
+        print(f"Ready: {email} (administrator login)", flush=True)
+    for index, student in enumerate(students):
+        profile = profiles.get(student["email"])
+        if profile is None:
+            payload = {key: value for key, value in student.items() if key != "role"}
+            payload.update(seed_batch=BATCH, cohort=f"Cohort {6 + index // 6}",
+                biography="Institute student portfolio for testing.",
+                skills=["Research", "Data analysis"], essential_skills=["Communication", "Teamwork"])
+            api.request("POST", table, payload)
+        saved["student_profiles"].append(dict(student))
+        save_credentials(credential_path, saved)
+        print(f"Ready: {student['full_name']} (student portfolio; no app login)", flush=True)
+    verified_auth = {user["email"].lower(): user for user in api.users() if user.get("email")}
+    verified_profiles = {row["email"].lower(): row for row in api.request("GET", table + "?select=id,email,seed_batch")}
+    for account in admins:
+        user = verified_auth.get(account["email"], {})
+        if user.get("app_metadata", {}).get("role") != "admin" or not user.get("email_confirmed_at"):
             raise RuntimeError(f"Final verification failed for {account['email']}.")
-    print(f"Verified 20 test accounts: 2 admins and 18 students. Logins saved to {credential_path.resolve()}.")
+    for student in students:
+        if verified_profiles.get(student["email"], {}).get("seed_batch") != BATCH:
+            raise RuntimeError(f"Final verification failed for {student['email']}.")
+    print(f"Verified 2 administrator logins and 18 student portfolios. Students have no app logins. Admin credentials saved to {credential_path.resolve()}.")
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--dry-run", action="store_true", help="Show the 20 planned accounts without credentials or network access")
+    parser.add_argument("--dry-run", action="store_true", help="Show two planned admin accounts and eighteen student portfolios without making changes")
     parser.add_argument("--institute", default="MCRI")
     parser.add_argument("--credentials", type=Path, default=Path("work/mcri-test-logins.json"))
     args = parser.parse_args()

@@ -88,7 +88,7 @@ enum AdministratorDashboardDestination: String, Hashable {
 private enum AdministratorDashboardStyle {
     static let orange = Color(red: 240 / 255, green: 105 / 255, blue: 44 / 255)
     static let charcoal = Color(red: 0.22, green: 0.22, blue: 0.22)
-    static let surface = Color(white: 0.96)
+    static let surface = Color(uiColor: .secondarySystemBackground)
 }
 
 private struct AdministratorDashboardContent: View {
@@ -124,7 +124,7 @@ private struct AdministratorDashboardContent: View {
                 .padding(.bottom, 24)
                 .frame(maxWidth: .infinity)
             }
-            .background(Color.white)
+            .background(Color(uiColor: .systemBackground))
             .refreshable { await refresh() }
             .toolbar(.hidden, for: .navigationBar)
             .navigationDestination(for: AdministratorDashboardDestination.self) { route in
@@ -175,11 +175,11 @@ private struct AdministratorDashboardContent: View {
             }
             Text("Administrator Dashboard")
                 .font(.title2.bold())
-                .foregroundStyle(.black)
+                .foregroundStyle(.primary)
                 .accessibilityAddTraits(.isHeader)
             Text("Manage your platform at a glance")
                 .font(.subheadline)
-                .foregroundStyle(AdministratorDashboardStyle.charcoal)
+                .foregroundStyle(.secondary)
         }
     }
 
@@ -281,7 +281,7 @@ private struct AdministratorDashboardContent: View {
                 }
                 Spacer(minLength: 0)
             }
-            .foregroundStyle(AdministratorDashboardStyle.charcoal)
+            .foregroundStyle(.primary)
             .padding(10)
             .frame(maxWidth: .infinity, minHeight: 64, alignment: .leading)
             .background(AdministratorDashboardStyle.surface, in: RoundedRectangle(cornerRadius: 10))
@@ -292,7 +292,7 @@ private struct AdministratorDashboardContent: View {
     }
 
     private func sectionTitle(_ title: String) -> some View {
-        Text(title).font(.headline.bold()).foregroundStyle(.black)
+        Text(title).font(.headline.bold()).foregroundStyle(.primary)
             .accessibilityAddTraits(.isHeader)
     }
 
@@ -305,7 +305,7 @@ private struct AdministratorDashboardContent: View {
                 .background(Color(white: 0.87), in: Circle())
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 4) {
-                Text(item.userName).font(.subheadline.bold()).foregroundStyle(.black)
+                Text(item.userName).font(.subheadline.bold()).foregroundStyle(.primary)
                 Text(item.action).font(.caption).foregroundStyle(.secondary)
                 Text(item.timestamp, style: .relative)
                     .font(.caption2)
@@ -340,7 +340,7 @@ private struct AdministratorDashboardContent: View {
                 Image(systemName: icon).font(.system(size: 23))
                 Text(title).font(.caption2.weight(.semibold))
             }
-            .foregroundStyle(selected ? AdministratorDashboardStyle.orange : AdministratorDashboardStyle.charcoal)
+            .foregroundStyle(selected ? AdministratorDashboardStyle.orange : Color.primary)
             .frame(maxWidth: .infinity, minHeight: 48)
             .background {
                 if selected {

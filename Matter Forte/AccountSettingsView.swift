@@ -1,45 +1,29 @@
 import SwiftUI
 import Auth
 
+/// Connects the settings feature branch to the single shared authentication model.
 struct AccountSettingsView: View {
     @ObservedObject var model: AuthViewModel
+    @State private var destination: SettingsAccountDestination?
 
     var body: some View {
-        List {
-            Section("Account") {
-                if let session = model.authenticatedSession {
-                    LabeledContent("Email", value: session.user.email ?? "Signed in")
-                }
-            }
-            Section("Legal") {
-                NavigationLink("Terms of Service") { LegalInformationView(document: LegalCopy.terms) }
-                NavigationLink("Privacy Policy") { LegalInformationView(document: LegalCopy.privacy) }
-            }
-            Section {
-                if let message = model.message { Text(message).foregroundStyle(.red) }
-                Button(model.isLoading ? "Signing Out…" : "Sign Out", role: .destructive) {
-                    Task { await model.signOut() }
-                }
-                .disabled(model.isLoading)
-            }
-        }
+        SettingsView(
+            isSigningOut: model.isLoading,
+            signOutError: model.message,
+            onEditProfile: { destination = .profile },
+            onChangePassword: { destination = .password },
+            onSignOut: { Task { await model.signOut() } }
+        )
         .navigationTitle("Settings")
-    }
-}
-
-private struct LegalInformationView: View {
-    let document: LegalDocument
-    var body: some View {
-        List {
-            if document.isSampleCopy {
-                Text("Draft document for testing").font(.caption).foregroundStyle(.secondary)
-            }
-            ForEach(document.sections) { section in
-                Section(section.title) { Text(section.text).textSelection(.enabled) }
-            }
-            Text("Version: \(document.version)").font(.caption).foregroundStyle(.secondary)
-        }
-        .navigationTitle(document.title)
         .navigationBarTitleDisplayMode(.inline)
+        .sheet(item: $destination) { route in
+            SettingsAccountForm(
+                destination: route,
+                initialName: model.profileName,
+                initialEmail: model.authenticatedSession?.user.email ?? "",
+                saveProfile: model.updateProfile,
+                savePassword: model.updatePassword
+            )
+        }
     }
 }

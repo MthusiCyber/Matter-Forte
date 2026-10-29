@@ -310,8 +310,14 @@ private struct StudentInitialsView: View {
 }
 
 struct CohortStudentProfileView: View {
-    let student: CohortStudent
+    @State private var student: CohortStudent
+    @State private var showingEdit = false
     let cohortName: String
+
+    init(student: CohortStudent, cohortName: String) {
+        _student = State(initialValue: student)
+        self.cohortName = cohortName
+    }
 
     var body: some View {
         ScrollView {
@@ -358,6 +364,20 @@ struct CohortStudentProfileView: View {
         }
         .navigationTitle("Student Profile")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button("Edit") { showingEdit = true }
+                    .accessibilityLabel("Edit student portfolio")
+            }
+        }
+        .sheet(isPresented: $showingEdit) {
+            AddCohortStudentView(cohorts: [StudentCohort(name: cohortName, students: [])],
+                initialStudent: student,
+                onSave: { _, updated in
+                    let record = try await InstituteDashboardService.saveStudent(updated, cohortName: cohortName, existing: true)
+                    student = record.profile
+                })
+        }
         .textSelection(.enabled)
     }
 
@@ -439,6 +459,8 @@ struct AddCohortStudentView: View {
     let cohorts: [StudentCohort]
     let onSave: (UUID, CohortStudent) async throws -> Void
     let usesNavigationStack: Bool
+    let initialStudent: CohortStudent?
+    @State private var biography = ""
     @State private var isSaving = false
     @State private var saveError: String?
     @State private var didSave = false
@@ -458,10 +480,19 @@ struct AddCohortStudentView: View {
     }
 
     init(cohorts: [StudentCohort], usesNavigationStack: Bool = true,
+         initialStudent: CohortStudent? = nil,
          onSave: @escaping (UUID, CohortStudent) async throws -> Void) {
         self.cohorts = cohorts
         self.usesNavigationStack = usesNavigationStack
         self.onSave = onSave
+        self.initialStudent = initialStudent
+        _fullName = State(initialValue: initialStudent?.fullName ?? "")
+        _email = State(initialValue: initialStudent?.email ?? "")
+        _university = State(initialValue: initialStudent?.university ?? "MCRI")
+        _fieldOfStudy = State(initialValue: initialStudent?.fieldOfStudy ?? "")
+        _biography = State(initialValue: initialStudent?.biography ?? "")
+        _techSkillsText = State(initialValue: initialStudent?.techSkills.joined(separator: ", ") ?? "")
+        _essentialSkillsText = State(initialValue: initialStudent?.essentialSkills.joined(separator: ", ") ?? "")
         _cohortID = State(initialValue: cohorts.first?.id ?? UUID())
     }
 
@@ -474,10 +505,10 @@ struct AddCohortStudentView: View {
             }
         }
         .tint(StudentDirectoryStyle.orange)
-        .alert("Student invited", isPresented: $didSave) {
+        .alert("Student saved", isPresented: $didSave) {
             Button("Done") { dismiss() }
         } message: {
-            Text("An invitation was sent to the student. Their account is stored in Supabase.")
+            Text("The student portfolio has been saved to Supabase.")
         }
     }
 
@@ -494,6 +525,7 @@ struct AddCohortStudentView: View {
                         .autocorrectionDisabled()
                     TextField("University", text: $university)
                     TextField("Field of study", text: $fieldOfStudy)
+                    TextField("About the student", text: $biography, axis: .vertical)
                 }
                 Section {
                     TextField("Tech skills", text: $techSkillsText, axis: .vertical)
@@ -511,7 +543,7 @@ struct AddCohortStudentView: View {
                     }
                 }
                 Section {
-                    Text("The student receives an email invitation to join the institute.")
+                    Text("Administrators maintain this student portfolio. Creating a portfolio does not create an app login.")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                 }
@@ -520,29 +552,31 @@ struct AddCohortStudentView: View {
             .safeAreaInset(edge: .bottom) {
                 if let saveError { Text(saveError).font(.caption).foregroundStyle(.red).padding().background(.background) }
             }
-            .navigationTitle("Add Student")
+            .navigationTitle(initialStudent == nil ? "Add Student" : "Edit Student")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button(isSaving ? "Sending…" : "Invite") {
+                    Button(isSaving ? "Saving…" : "Save") {
                         guard !isSaving else { return }
                         isSaving = true
                         saveError = nil
                         let student = CohortStudent(
+                            id: initialStudent?.id ?? UUID(),
                             fullName: fullName.trimmingCharacters(in: .whitespacesAndNewlines),
                             email: email.trimmingCharacters(in: .whitespacesAndNewlines),
                             university: university,
                             fieldOfStudy: fieldOfStudy,
+                            biography: biography,
                             techSkills: parsedSkills(techSkillsText),
                             essentialSkills: parsedSkills(essentialSkillsText)
                         )
                         Task {
                             defer { isSaving = false }
                             do { try await onSave(cohortID, student); didSave = true }
-                            catch { saveError = "The invitation could not be sent. Check your connection and the institute invitation service, then try again." }
+                            catch { saveError = "The student portfolio could not be saved. Check your connection and try again." }
                         }
                     }
                     .disabled(isSaving || fullName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty

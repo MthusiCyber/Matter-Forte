@@ -2,6 +2,7 @@ import SwiftUI
 
 struct BrandLogo: View {
     var scale: CGFloat = 1
+    @Environment(\.colorScheme) private var colorScheme
     var body: some View {
         VStack(spacing: 10 * scale) {
             GeometryReader { proxy in
@@ -61,7 +62,7 @@ struct BrandLogo: View {
                 .font(.system(size: 27 * scale, weight: .semibold))
                 .tracking(7 * scale)
                 .foregroundStyle(
-                    Color(red: 0.40, green: 0.30, blue: 0.34)
+                    colorScheme == .dark ? Color.primary : Color(red: 0.40, green: 0.30, blue: 0.34)
                 )
 
             Text("FORTE")

@@ -16,7 +16,6 @@ extension Color {
 struct MatterForteAppView: View {
     var body: some View {
         ContentView()
-            .preferredColorScheme(.light)
     }
 }
 

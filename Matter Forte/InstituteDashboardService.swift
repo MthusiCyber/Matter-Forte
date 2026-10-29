@@ -1,6 +1,5 @@
 import SwiftUI
 import Supabase
-import Functions
 
 @MainActor
 enum InstituteDashboardService {
@@ -12,21 +11,25 @@ enum InstituteDashboardService {
         try await SupabaseConfig.client.database.rpc("matter_forte_list_students").execute().value
     }
 
-    static func inviteStudent(_ student: CohortStudent, cohortName: String = "MCRI") async throws {
-        nonisolated struct Invitation: Encodable, Sendable {
+    static func saveStudent(_ student: CohortStudent, cohortName: String = "MCRI", existing: Bool = false) async throws -> InstituteStudent {
+        nonisolated struct StudentDetails: Encodable, Sendable {
+            let id: UUID?
             let full_name: String
             let email: String
             let institute: String
             let programme: String
             let cohort: String
+            let biography: String
             let skills: [String]
             let essential_skills: [String]
         }
-        try await SupabaseConfig.client.functions.invoke("admin-invite-student", options: FunctionInvokeOptions(body: Invitation(
-            full_name: student.fullName, email: student.email,
+        nonisolated struct Parameters: Encodable, Sendable { let details: StudentDetails }
+        return try await SupabaseConfig.client.database.rpc("matter_forte_save_student", params: Parameters(details: StudentDetails(
+            id: existing ? student.id : nil, full_name: student.fullName, email: student.email,
             institute: student.university.isEmpty ? "MCRI" : student.university,
-            programme: student.fieldOfStudy, cohort: cohortName, skills: student.techSkills, essential_skills: student.essentialSkills
-        )))
+            programme: student.fieldOfStudy, cohort: cohortName, biography: student.biography,
+            skills: student.techSkills, essential_skills: student.essentialSkills
+        ))).execute().value
     }
 }
 
@@ -86,7 +89,7 @@ struct InstituteStudentsView: View {
                 StudentCohortListView(cohorts: cohorts,
                     onSaveStudent: { cohortID, student in
                         let name = cohorts.first(where: { $0.id == cohortID })?.name ?? "MCRI"
-                        try await InstituteDashboardService.inviteStudent(student, cohortName: name)
+                        _ = try await InstituteDashboardService.saveStudent(student, cohortName: name)
                     },
                     onStudentAdded: { Task { await load() } })
                     .id(revision)

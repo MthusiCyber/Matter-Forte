@@ -1,4 +1,5 @@
 import Foundation
+import OSLog
 import Combine
 import Supabase
 import Auth
@@ -23,11 +24,16 @@ final class AuthViewModel: ObservableObject {
     @Published private(set) var notice: String?
     @Published private(set) var authenticatedSession: Auth.Session?
 
+    var profileName: String {
+        authenticatedSession?.user.userMetadata["full_name"]?.stringValue ?? ""
+    }
+
     @Published private(set) var termsAcceptance: TermsAcceptance?
     private let client: SupabaseClient
     private let agreementStore: TermsAgreementStore
     private var registrationDraftID = UUID()
     private var isObserving = false
+    private let logger = Logger(subsystem: "MatterForte", category: "Authentication")
 
     init(client: SupabaseClient, agreementStore: TermsAgreementStore? = nil) {
         self.client = client
@@ -102,9 +108,19 @@ final class AuthViewModel: ObservableObject {
         guard !isLoading else { return }
         message = nil
         notice = nil
-        guard validate() else { return }
+        guard validate() else {
+            message = ["fullName", "email", "password", "confirmation", "terms"]
+                .compactMap { errors[$0] }
+                .joined(separator: "\n")
+            logger.info("Authentication stopped by form validation.")
+            return
+        }
         isLoading = true
-        defer { isLoading = false }
+        logger.info("Authentication request started. Registration: \(self.isRegistering)")
+        defer {
+            isLoading = false
+            logger.info("Authentication request finished.")
+        }
 
         do {
             if isRegistering {
@@ -137,15 +153,22 @@ final class AuthViewModel: ObservableObject {
                     }
                 } else {
                     isRegistering = false
-                    notice = "Check your email for a confirmation link. After confirming, return here to log in. If you already have an account, try logging in."
+                    notice = "Check your inbox and spam folder for a confirmation link. Confirm your email before logging in. If you already have an account, use Login instead."
+                    logger.info("Signup response requires email confirmation; no session returned.")
                 }
             } else {
                 authenticatedSession = try await client.auth.signIn(email: email, password: password)
                 password = ""
             }
         } catch is CancellationError {
-            // Keep the form available if a caller cancels the operation.
+            message = "The request was cancelled. Please try again."
         } catch {
+            // Log diagnostic codes only, never credentials, tokens, or request bodies.
+            if case let AuthError.api(api) = error {
+                logger.error("Authentication rejected. HTTP status: \(api.code ?? 0)")
+            } else if let network = error as? URLError {
+                logger.error("Authentication network failure. Code: \(network.code.rawValue)")
+            }
             message = friendlyMessage(for: error)
         }
     }
@@ -161,6 +184,24 @@ final class AuthViewModel: ObservableObject {
         } catch {
             message = friendlyMessage(for: error)
         }
+    }
+
+    func updateProfile(name: String, email: String) async throws -> String {
+        let currentEmail = authenticatedSession?.user.email
+        let changedEmail = email != currentEmail
+        let user = try await client.auth.update(user: UserAttributes(
+            email: changedEmail ? email : nil,
+            data: ["full_name": .string(name)]
+        ))
+        authenticatedSession?.user = user
+        return changedEmail
+            ? "Your profile was saved. Check your inbox for any email-change confirmation instructions."
+            : "Your profile was saved."
+    }
+
+    func updatePassword(_ password: String) async throws -> String {
+        _ = try await client.auth.update(user: UserAttributes(password: password))
+        return "Your password was changed."
     }
 
     func signOut() async {
@@ -226,11 +267,13 @@ final class AuthViewModel: ObservableObject {
 
     private func friendlyMessage(for error: Error) -> String {
         if let network = error as? URLError {
+            if network.code == .timedOut {
+                return "The request timed out. Check your connection. If you were signing up, check your inbox before trying again—the account may already have been created."
+            }
             if network.code == .cancelled { return "The request was cancelled. Please try again." }
             return "We couldn’t connect. Check your connection and try again. Your email is still here."
         }
-        // SDK versions expose different AuthError properties. Use LocalizedError
-        // as a compatibility fallback without depending on a local AuthError type.
+        // Preserve actionable server feedback instead of treating every rejection as a connection failure.
         let description = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
         let text = description.lowercased()
         if text.contains("invalid login credentials") || text.contains("invalid credentials")
@@ -255,6 +298,21 @@ final class AuthViewModel: ObservableObject {
             return "Registration is not available right now. Please contact support."
         }
 
-        return "We couldn’t complete your request. Check your connection and try again. Your email is still here."
+        if text.contains("email") && (text.contains("sending") || text.contains("send")
+            || text.contains("not authorized") || text.contains("not allowed")) {
+            return "The sign-in service could not send the confirmation email. Please contact the app team to check email delivery settings."
+        }
+        if text.contains("database") {
+            return "The sign-in service could not save your account. Please contact the app team."
+        }
+        if case let AuthError.api(api) = error {
+            if let code = api.code, code >= 500 {
+                return "The sign-in service is temporarily unavailable. Please try again later."
+            }
+            if !description.isEmpty {
+                return description
+            }
+        }
+        return "We couldn’t complete your request. Please try again. Your email is still here."
     }
 }
