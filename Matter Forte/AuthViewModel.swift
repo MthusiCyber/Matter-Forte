@@ -91,7 +91,7 @@ final class AuthViewModel: ObservableObject {
                     password: password,
                     data: [
                         "full_name": .string(fullName.trimmingCharacters(in: .whitespacesAndNewlines)),
-                        // User-editable preference only; never use this to authorize admin access.
+                        // The signup database trigger assigns this choice to app_metadata.role.
                         "requested_role": .string(role.rawValue)
                     ],
                     redirectTo: SupabaseConfig.redirectURL
@@ -100,6 +100,10 @@ final class AuthViewModel: ObservableObject {
                 confirmation = ""
                 if let session = result.session {
                     authenticatedSession = session
+                    if role == .admin && session.user.appMetadata["role"] != .string("admin") {
+                        // Refresh once if the role was assigned during account creation.
+                        authenticatedSession = (try? await client.auth.refreshSession()) ?? session
+                    }
                 } else {
                     isRegistering = false
                     notice = "Check your email for a confirmation link. After confirming, return here to log in. If you already have an account, try logging in."
@@ -110,6 +114,19 @@ final class AuthViewModel: ObservableObject {
             }
         } catch is CancellationError {
             // Keep the form available if a caller cancels the operation.
+        } catch {
+            message = friendlyMessage(for: error)
+        }
+    }
+
+    func refreshAdministratorAccess() async {
+        guard !isLoading else { return }
+        isLoading = true
+        message = nil
+        defer { isLoading = false }
+        do {
+            // Refresh the JWT so newly granted server roles appear in appMetadata.
+            authenticatedSession = try await client.auth.refreshSession()
         } catch {
             message = friendlyMessage(for: error)
         }

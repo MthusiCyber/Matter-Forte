@@ -1,5 +1,10 @@
 import SwiftUI
 import Auth
+#if canImport(_Helpers)
+import _Helpers
+#elseif canImport(Helpers)
+import Helpers
+#endif
 
 /// Admin-only entry point. Authorize the same role on every backend operation.
 /// Use server-managed app_metadata.role; never authorize from requested_role.
@@ -31,8 +36,8 @@ struct AdministratorDashboardView: View {
     }
 }
 
-struct AdministratorDashboardSnapshot: Sendable {
-    let totalUsers: Int
+nonisolated struct AdministratorDashboardSnapshot: Decodable, Sendable {
+    let totalStudents: Int
     let activeInternships: Int
     let pendingApprovals: Int
     let reportedIssues: Int
@@ -40,12 +45,12 @@ struct AdministratorDashboardSnapshot: Sendable {
     let recentActivity: [AdministratorActivity]
 
     var isEmpty: Bool {
-        totalUsers == 0 && activeInternships == 0 && pendingApprovals == 0
+        totalStudents == 0 && activeInternships == 0 && pendingApprovals == 0
             && reportedIssues == 0 && recentActivity.isEmpty
     }
 }
 
-struct AdministratorActivity: Identifiable, Sendable {
+nonisolated struct AdministratorActivity: Decodable, Identifiable, Sendable {
     let id: UUID
     let userName: String
     let action: String
@@ -65,14 +70,15 @@ struct AdministratorActivity: Identifiable, Sendable {
 }
 
 enum AdministratorDashboardDestination: String, Hashable {
-    case users, approvals, reportedIssues, addUser, notifications, settings
+    case students, approvals, adminRequests, reportedIssues, addStudent, notifications, settings
 
     var title: String {
         switch self {
-        case .users: "Manage Users"
+        case .students: "Manage Students"
         case .approvals: "Pending Approvals"
+        case .adminRequests: "Admin Requests"
         case .reportedIssues: "Reported Issues"
-        case .addUser: "Add User"
+        case .addStudent: "Add Student"
         case .notifications: "Notifications"
         case .settings: "Settings"
         }
@@ -134,6 +140,11 @@ private struct AdministratorDashboardContent: View {
     private var header: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack {
+                Button { path.append(.adminRequests) } label: {
+                    Label("Admin Requests", systemImage: "person.badge.shield.checkmark")
+                        .font(.subheadline.weight(.semibold))
+                        .frame(minHeight: 44)
+                }
                 Spacer()
                 Button { path.append(.notifications) } label: {
                     Image(systemName: "bell")
@@ -173,7 +184,7 @@ private struct AdministratorDashboardContent: View {
                 .font(.caption.bold())
                 .foregroundStyle(AdministratorDashboardStyle.orange)
             LazyVGrid(columns: columns, alignment: .leading, spacing: 14) {
-                statistic(data.totalUsers, title: "Total Users")
+                statistic(data.totalStudents, title: "Total Students")
                 statistic(data.activeInternships, title: "Active internships")
             }
         }
@@ -189,17 +200,17 @@ private struct AdministratorDashboardContent: View {
             ContentUnavailableView(
                 "Your platform is ready",
                 systemImage: "tray",
-                description: Text("There are no platform records yet. Add a user to get started.")
+                description: Text("There are no platform records yet. Add a student to get started.")
             )
         }
 
         VStack(alignment: .leading, spacing: 10) {
             sectionTitle("Quick Actions")
-            Button { path.append(.addUser) } label: {
+            Button { path.append(.addStudent) } label: {
                 HStack {
                     Image(systemName: "person.badge.plus")
                     Spacer()
-                    Text("Add User").fontWeight(.semibold)
+                    Text("Add Student").fontWeight(.semibold)
                     Spacer()
                 }
                 .font(.body)
@@ -208,9 +219,9 @@ private struct AdministratorDashboardContent: View {
                 .frame(minHeight: 48)
                 .background(AdministratorDashboardStyle.orange, in: RoundedRectangle(cornerRadius: 9))
             }
-            Button { path.append(.users) } label: {
+            Button { path.append(.students) } label: {
                 HStack(spacing: 18) {
-                    Text("Manage Users").fontWeight(.semibold)
+                    Text("Manage Students").fontWeight(.semibold)
                     Image(systemName: "arrow.right")
                 }
                 .frame(minHeight: 44)
@@ -303,7 +314,7 @@ private struct AdministratorDashboardContent: View {
     private var bottomNavigation: some View {
         HStack(spacing: 0) {
             navigationItem("Home", icon: "house", route: nil)
-            navigationItem("Users", icon: "person.2", route: .users)
+            navigationItem("Students", icon: "person.2", route: .students)
             navigationItem("Approvals", icon: "briefcase", route: .approvals)
             navigationItem("Settings", icon: "gearshape", route: .settings)
         }
@@ -357,31 +368,12 @@ private struct AdministratorDashboardContent: View {
             snapshot = result
         } catch is CancellationError {
             return
+        } catch let error as AdministratorDashboardConnectionError {
+            snapshot = nil
+            errorMessage = error.localizedDescription
         } catch {
             snapshot = nil
             errorMessage = "Check your connection and try again."
         }
     }
-}
-
-// Preview data never enters the authenticated production entry point.
-#Preview("Administrator Dashboard — sample data") {
-    AdministratorDashboardContent(
-        loadDashboard: {
-            AdministratorDashboardSnapshot(
-                totalUsers: 248, activeInternships: 32, pendingApprovals: 18,
-                reportedIssues: 6, unreadNotifications: 2,
-                recentActivity: [
-                    AdministratorActivity(userName: "Amanda Cio", action: "Student account created", timestamp: .now.addingTimeInterval(-1800)),
-                    AdministratorActivity(userName: "Taku Moyo", action: "Student account created", timestamp: .now.addingTimeInterval(-7200))
-                ]
-            )
-        },
-        destination: { route in
-            AnyView(ContentUnavailableView(
-                route.title, systemImage: "rectangle.on.rectangle",
-                description: Text("Preview destination. Supply the corresponding application flow when integrating the dashboard.")
-            ))
-        }
-    )
 }
