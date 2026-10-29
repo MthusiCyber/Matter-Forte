@@ -1,21 +1,14 @@
-//
-//  ContentView.swift
-//  Matter Forte
-//
-//  Created by Mthusi on 29/10/2026.
-//
-
 import SwiftUI
 
 struct ContentView: View {
     var body: some View {
-        VStack {
-            Image(systemName: "globe")
-                .imageScale(.large)
-                .foregroundStyle(.tint)
-            Text("Hello, world!")
+        // Keep the screen's full layout proposal when the keyboard appears.
+        // Pin overflowing content to the top instead of letting SwiftUI recenter it.
+        GeometryReader { geometry in
+            SignUpView()
+                .frame(width: geometry.size.width, height: geometry.size.height, alignment: .top)
         }
-        .padding()
+        .ignoresSafeArea(.keyboard, edges: .bottom)
     }
 }
 
