@@ -3,7 +3,6 @@
 //  Matter Forte
 //
 //  Created by Mthusi on 29/10/2026.
-//
 
 import SwiftUI
 
@@ -11,7 +10,7 @@ import SwiftUI
 struct Matter_ForteApp: App {
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            MatterForteAppView()
         }
     }
 }
