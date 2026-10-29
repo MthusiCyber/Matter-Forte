@@ -14,9 +14,22 @@
 		491539903093795A00F01BB7 /* Matter Forte.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Matter Forte.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		841254CB3093DC53009470C1 /* Exceptions for "Matter Forte" folder in "Matter Forte" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Tests/LegalAgreementTests.swift,
+			);
+			target = 4915398F3093795A00F01BB7 /* Matter Forte */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		491539923093795A00F01BB7 /* Matter Forte */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				841254CB3093DC53009470C1 /* Exceptions for "Matter Forte" folder in "Matter Forte" target */,
+			);
 			path = "Matter Forte";
 			sourceTree = "<group>";
 		};

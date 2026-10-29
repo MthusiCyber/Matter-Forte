@@ -10,6 +10,7 @@ struct AuthView: View {
     @ObservedObject var model: AuthViewModel
     @FocusState private var focused: Field?
     @State private var showingFeedback = false
+    @State private var legalPage: LegalPage?
     private enum Field: Hashable { case fullName, email, password, confirmation }
 
     var body: some View {
@@ -77,9 +78,15 @@ struct AuthView: View {
                     .disabled(model.isLoading)
                     .padding(.top, 14)
                     if model.isRegistering {
-                        Text("By creating an Account you agree to our Terms of Service and Privacy Policy.")
-                            .font(.footnote).foregroundStyle(AuthStyle.textOrange)
-                            .multilineTextAlignment(.center).padding(.top, 8)
+                        RegistrationLegalLinks(
+                            error: model.errors["terms"],
+                            onOpen: { page in
+                                focused = nil
+                                legalPage = page
+                            }
+                        )
+                        .disabled(model.isLoading)
+                        .padding(.top, 8)
                     }
                 }
                 .frame(maxWidth: 430)
@@ -89,6 +96,11 @@ struct AuthView: View {
             .scrollDismissesKeyboard(.interactively)
             .background(LinearGradient(colors: [.white, Color(red: 1, green: 0.96, blue: 0.99), .white],
                                        startPoint: .topLeading, endPoint: .bottomTrailing).ignoresSafeArea())
+        }
+        .sheet(item: $legalPage) { page in
+            LegalFlowView(startingPage: page,
+                          onAgree: { try model.acceptTerms($0) },
+                          onFinish: { legalPage = nil })
         }
         .preferredColorScheme(.light)
         .toolbar {
@@ -204,3 +216,28 @@ struct AuthView: View {
     }
 }
 
+
+private struct RegistrationLegalLinks: View {
+    let error: String?
+    let onOpen: (LegalPage) -> Void
+
+    var body: some View {
+        VStack(spacing: 4) {
+            Text("Before creating an account, please review:")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+            Button("Terms of Service") { onOpen(.terms) }
+                .frame(maxWidth: .infinity, minHeight: 44)
+            Button("Privacy Policy") { onOpen(.privacy) }
+                .frame(maxWidth: .infinity, minHeight: 44)
+            if let error {
+                Text(error)
+                    .font(.footnote)
+                    .foregroundStyle(.red)
+            }
+        }
+        .font(.callout.weight(.semibold))
+        .foregroundStyle(AuthStyle.textOrange)
+        .multilineTextAlignment(.center)
+    }
+}
