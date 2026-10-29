@@ -6,6 +6,14 @@
 
 import SwiftUI
 
+extension Color {
+    static let appOrange = Color(
+        red: 240 / 255,
+        green: 105 / 255,
+        blue: 44 / 255
+    )
+}
+
 struct MatterForteAppView: View {
     @State private var showingNextView = false
 
@@ -31,7 +39,7 @@ struct NextView: View {
             VStack(spacing: 20) {
                 Image(systemName: "arrow.right.circle.fill")
                     .font(.system(size: 60))
-                    .foregroundStyle(MatterPalette.orange)
+                    .foregroundStyle(Color.appOrange)
                 Text("Let’s get started")
                     .font(.largeTitle.bold())
                     .multilineTextAlignment(.center)
@@ -75,12 +83,6 @@ struct MatterForteRootView: View {
             }
         }
     }
-}
-
-private enum MatterPalette {
-    static let orange = Color(red: 0.98, green: 0.39, blue: 0.15)
-    static let rust = Color(red: 0.72, green: 0.22, blue: 0.15)
-    static let gray = Color(red: 0.35, green: 0.35, blue: 0.36)
 }
 
 struct SplashView: View {
@@ -129,7 +131,7 @@ private struct MatterForteScene: View {
                 Color.white
 
                 Ellipse()
-                    .fill(MatterPalette.orange)
+                    .fill(Color.appOrange)
                     .frame(width: width * 0.65, height: width * 0.48)
                     .position(x: width * 0.91, y: height * 0.06)
                     .offset(
@@ -140,7 +142,7 @@ private struct MatterForteScene: View {
                     .accessibilityHidden(true)
 
                 Ellipse()
-                    .fill(MatterPalette.orange)
+                    .fill(Color.appOrange)
                     .frame(width: width * 0.94, height: width * 0.88)
                     .position(x: width * 0.36, y: height * 0.89)
                     .offset(x: appeared ? 0 : -70, y: appeared ? 0 : 70)
@@ -148,7 +150,7 @@ private struct MatterForteScene: View {
                     .accessibilityHidden(true)
 
                 WelcomePanel(arcHeight: arcHeight)
-                    .fill(MatterPalette.orange)
+                    .fill(Color.appOrange)
                     .frame(height: height * 0.52)
                     .frame(maxHeight: .infinity, alignment: .bottom)
                     .offset(y: showingWelcome || reduceMotion ? 0 : height * 0.16)
@@ -194,7 +196,7 @@ private struct MatterForteScene: View {
                 Button(action: onContinue) {
                     Text("Continue")
                         .font(.system(size: 29, weight: .semibold))
-                        .foregroundStyle(.black)
+                        .foregroundStyle(.orange)
                         .frame(maxWidth: .infinity, minHeight: 66)
                         .background(.white, in: RoundedRectangle(cornerRadius: 16))
                 }
@@ -247,7 +249,7 @@ private struct MatterForteLogo: View {
                         CGPoint(x: 12, y: 76), CGPoint(x: 50, y: 94),
                         CGPoint(x: 50, y: 107), CGPoint(x: 0, y: 83)
                     ], scale: scale)
-                    .fill(MatterPalette.orange)
+                    .fill(Color.appOrange)
 
                     logoPath([
                         CGPoint(x: 50, y: 0), CGPoint(x: 100, y: 23),
@@ -256,7 +258,7 @@ private struct MatterForteLogo: View {
                         CGPoint(x: 50, y: 46), CGPoint(x: 86, y: 29),
                         CGPoint(x: 50, y: 12)
                     ], scale: scale)
-                    .fill(MatterPalette.rust)
+                    .fill(Color.appOrange)
                 }
             }
             .frame(width: 88, height: 95)
@@ -293,7 +295,7 @@ private struct MatterForteLogo: View {
                         value: revealed
                     )
             }
-            .foregroundStyle(MatterPalette.gray)
+            .foregroundStyle(Color.black.opacity(isVisible ? 1 : 0.3))
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Matter Forte")
