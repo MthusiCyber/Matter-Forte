@@ -30,8 +30,6 @@ final class AuthViewModel: ObservableObject {
         self.client = client
     }
 
-    /// Call from a task on the persistent root view, not on the login screen.
-    /// SwiftUI cancels the listener when that root disappears.
     func observeAuthChanges() async {
         guard !isObserving else { return }
         isObserving = true
