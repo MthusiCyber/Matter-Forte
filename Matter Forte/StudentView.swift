@@ -1,4 +1,3 @@
-
 import SwiftUI
 
 struct StudentView: View {
@@ -61,6 +60,14 @@ nonisolated struct StudentCohort: Identifiable, Sendable {
     var name: String
     var students: [CohortStudent]
 
+    static func name(forNumber input: String) -> String? {
+        let number = input.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !number.isEmpty, number.allSatisfy({ "0123456789".contains($0) }) else { return nil }
+        let normalized = number.drop(while: { $0 == "0" })
+        guard !normalized.isEmpty else { return nil }
+        return "Cohort \(normalized)"
+    }
+
     init(id: UUID = UUID(), name: String, students: [CohortStudent]) {
         self.id = id
         self.name = name
@@ -73,7 +80,7 @@ struct StudentCohortListView: View {
     let isLoading: Bool
     let loadError: String?
     let onRetry: () -> Void
-    let onSaveStudent: ((UUID, CohortStudent) async throws -> Void)?
+    let onSaveStudent: ((String, CohortStudent) async throws -> Void)?
     let onStudentAdded: () -> Void
     @State private var searchText = ""
     @State private var expandedCohorts: Set<UUID> = []
@@ -85,7 +92,7 @@ struct StudentCohortListView: View {
          isLoading: Bool = false,
          loadError: String? = nil,
          onRetry: @escaping () -> Void = {},
-         onSaveStudent: ((UUID, CohortStudent) async throws -> Void)? = nil,
+         onSaveStudent: ((String, CohortStudent) async throws -> Void)? = nil,
          onStudentAdded: @escaping () -> Void = {}) {
         self.cohorts = cohorts
         self.isLoading = isLoading
@@ -191,12 +198,12 @@ struct StudentCohortListView: View {
             }
         }
         .navigationDestination(for: StudentProfileRoute.self) { route in
-            CohortStudentProfileView(student: route.student, cohortName: route.cohortName)
+            CohortStudentProfileView(student: route.student, cohortName: route.cohortName, onStudentUpdated: onStudentAdded)
         }
         .sheet(isPresented: $showingAddStudent, onDismiss: onStudentAdded) {
             if let onSaveStudent {
                 AddCohortStudentView(
-                    cohorts: cohorts.isEmpty ? [StudentCohort(name: "MCRI", students: [])] : cohorts,
+                    cohorts: cohorts,
                     onSave: onSaveStudent
                 )
             }
@@ -233,7 +240,6 @@ struct StudentCohortListView: View {
     }
 
     private func cohortSection(_ cohort: StudentCohort) -> some View {
-        // Search temporarily expands matching cohorts without changing saved expansion state.
         let isExpanded = query.isEmpty
             ? expandedCohorts.contains(cohort.id)
             : !collapsedSearchCohorts.contains(cohort.id)
@@ -339,11 +345,13 @@ private struct StudentInitialsView: View {
 struct CohortStudentProfileView: View {
     @State private var student: CohortStudent
     @State private var showingEdit = false
-    let cohortName: String
+    @State private var cohortName: String
+    let onStudentUpdated: () -> Void
 
-    init(student: CohortStudent, cohortName: String) {
+    init(student: CohortStudent, cohortName: String, onStudentUpdated: @escaping () -> Void = {}) {
+        self.onStudentUpdated = onStudentUpdated
         _student = State(initialValue: student)
-        self.cohortName = cohortName
+        _cohortName = State(initialValue: cohortName)
     }
 
     var body: some View {
@@ -400,9 +408,11 @@ struct CohortStudentProfileView: View {
         .sheet(isPresented: $showingEdit) {
             AddCohortStudentView(cohorts: [StudentCohort(name: cohortName, students: [])],
                 initialStudent: student,
-                onSave: { _, updated in
-                    let record = try await InstituteDashboardService.saveStudent(updated, cohortName: cohortName, existing: true)
+                onSave: { selectedName, updated in
+                    let record = try await InstituteDashboardService.saveStudent(updated, cohortName: selectedName, existing: true)
                     student = record.profile
+                    cohortName = record.cohort ?? selectedName
+                    onStudentUpdated()
                 })
         }
         .textSelection(.enabled)
@@ -420,7 +430,6 @@ struct CohortStudentProfileView: View {
     }
 }
 
-// Shows the selected student's assigned skills. No assessment scores are inferred.
 struct StudentOverallProgressView: View {
     let techSkills: [String]
     let essentialSkills: [String]
@@ -457,7 +466,6 @@ struct StudentOverallProgressView: View {
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
             } else {
-                // Index identity preserves repeated names without duplicate ForEach IDs.
                 ForEach(skills.indices, id: \.self) { index in
                     if index > 0 {
                         Divider()
@@ -484,7 +492,7 @@ struct StudentOverallProgressView: View {
 
 struct AddCohortStudentView: View {
     let cohorts: [StudentCohort]
-    let onSave: (UUID, CohortStudent) async throws -> Void
+    let onSave: (String, CohortStudent) async throws -> Void
     let usesNavigationStack: Bool
     let initialStudent: CohortStudent?
     @State private var biography = ""
@@ -492,13 +500,25 @@ struct AddCohortStudentView: View {
     @State private var saveError: String?
     @State private var didSave = false
     @Environment(\.dismiss) private var dismiss
-    @State private var cohortID: UUID
+
+    @State private var selectedCohortOption: String
+    @State private var customCohortName = ""
+
     @State private var fullName = ""
     @State private var email = ""
     @State private var university = ""
     @State private var fieldOfStudy = ""
     @State private var techSkillsText = ""
     @State private var essentialSkillsText = ""
+
+    private static let newCohortOption = "__NEW_COHORT__"
+
+    private var selectedCohortName: String? {
+        if selectedCohortOption == Self.newCohortOption {
+            return StudentCohort.name(forNumber: customCohortName)
+        }
+        return cohorts.first { $0.id.uuidString == selectedCohortOption }?.name
+    }
 
     private func parsedSkills(_ text: String) -> [String] {
         text.split(separator: ",")
@@ -508,19 +528,26 @@ struct AddCohortStudentView: View {
 
     init(cohorts: [StudentCohort], usesNavigationStack: Bool = true,
          initialStudent: CohortStudent? = nil,
-         onSave: @escaping (UUID, CohortStudent) async throws -> Void) {
+         onSave: @escaping (String, CohortStudent) async throws -> Void) {
+        let cohorts = cohorts.filter { $0.name != "Unassigned cohort" }
         self.cohorts = cohorts
         self.usesNavigationStack = usesNavigationStack
         self.onSave = onSave
         self.initialStudent = initialStudent
         _fullName = State(initialValue: initialStudent?.fullName ?? "")
         _email = State(initialValue: initialStudent?.email ?? "")
-        _university = State(initialValue: initialStudent?.university ?? "MCRI")
+        _university = State(initialValue: initialStudent?.university ?? "")
         _fieldOfStudy = State(initialValue: initialStudent?.fieldOfStudy ?? "")
         _biography = State(initialValue: initialStudent?.biography ?? "")
         _techSkillsText = State(initialValue: initialStudent?.techSkills.joined(separator: ", ") ?? "")
         _essentialSkillsText = State(initialValue: initialStudent?.essentialSkills.joined(separator: ", ") ?? "")
-        _cohortID = State(initialValue: cohorts.first?.id ?? UUID())
+
+        if cohorts.isEmpty {
+            _selectedCohortOption = State(initialValue: Self.newCohortOption)
+        } else {
+            let initialCohortID = cohorts.first?.id.uuidString ?? Self.newCohortOption
+            _selectedCohortOption = State(initialValue: initialCohortID)
+        }
     }
 
     var body: some View {
@@ -535,81 +562,102 @@ struct AddCohortStudentView: View {
         .alert("Student saved", isPresented: $didSave) {
             Button("Done") { dismiss() }
         } message: {
-            Text("The student portfolio has been saved to Supabase.")
+            Text("The student portfolio has been saved successfully.")
         }
     }
 
     private var form: some View {
-            Form {
-                Section("Student details") {
-                    TextField("Full name", text: $fullName)
-                        .textContentType(.name)
-                        .textInputAutocapitalization(.words)
-                    TextField("Email", text: $email)
-                        .keyboardType(.emailAddress)
-                        .textContentType(.emailAddress)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                    TextField("University", text: $university)
-                    TextField("Field of study", text: $fieldOfStudy)
-                    TextField("About the student", text: $biography, axis: .vertical)
-                }
-                Section {
-                    TextField("Tech skills", text: $techSkillsText, axis: .vertical)
-                    TextField("Essential skills", text: $essentialSkillsText, axis: .vertical)
-                } header: {
-                    Text("Skills")
-                } footer: {
-                    Text("Separate each skill with a comma.")
-                }
-                Section("Cohort") {
-                    Picker("Cohort", selection: $cohortID) {
-                        ForEach(cohorts) { cohort in
-                            Text(cohort.name).tag(cohort.id)
-                        }
+        Form {
+            Section("Student details") {
+                TextField("Full name", text: $fullName)
+                    .textContentType(.name)
+                    .textInputAutocapitalization(.words)
+                TextField("Email", text: $email)
+                    .keyboardType(.emailAddress)
+                    .textContentType(.emailAddress)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                TextField("University", text: $university)
+                TextField("Field of study", text: $fieldOfStudy)
+                TextField("About the student", text: $biography, axis: .vertical)
+            }
+            Section {
+                TextField("Tech skills", text: $techSkillsText, axis: .vertical)
+                TextField("Essential skills", text: $essentialSkillsText, axis: .vertical)
+            } header: {
+                Text("Skills")
+            } footer: {
+                Text("Separate each skill with a comma.")
+            }
+            Section("Cohort") {
+                Picker("Cohort", selection: $selectedCohortOption) {
+                    ForEach(cohorts) { cohort in
+                        Text(cohort.name).tag(cohort.id.uuidString)
                     }
+                    Text("Add New Cohort...").tag(Self.newCohortOption)
                 }
-                Section {
-                    Text("Administrators maintain this student portfolio. Creating a portfolio does not create an app login.")
+
+                if selectedCohortOption == Self.newCohortOption {
+                    TextField("Cohort number (e.g. 9)", text: $customCohortName)
+                        .keyboardType(.numberPad)
+                        .autocorrectionDisabled()
+                    Text("Enter a whole number greater than zero.")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                 }
             }
-            .disabled(isSaving)
-            .safeAreaInset(edge: .bottom) {
-                if let saveError { Text(saveError).font(.caption).foregroundStyle(.red).padding().background(.background) }
+            Section {
+                Text("Administrators maintain this student portfolio. Creating a portfolio does not create an app login.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
             }
-            .navigationTitle(initialStudent == nil ? "Add Student" : "Edit Student")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button(isSaving ? "Saving…" : "Save") {
-                        guard !isSaving else { return }
-                        isSaving = true
-                        saveError = nil
-                        let student = CohortStudent(
-                            id: initialStudent?.id ?? UUID(),
-                            fullName: fullName.trimmingCharacters(in: .whitespacesAndNewlines),
-                            email: email.trimmingCharacters(in: .whitespacesAndNewlines),
-                            university: university,
-                            fieldOfStudy: fieldOfStudy,
-                            biography: biography,
-                            techSkills: parsedSkills(techSkillsText),
-                            essentialSkills: parsedSkills(essentialSkillsText)
-                        )
-                        Task {
-                            defer { isSaving = false }
-                            do { try await onSave(cohortID, student); didSave = true }
-                            catch { saveError = "The student portfolio could not be saved. Check your connection and try again." }
+        }
+        .disabled(isSaving)
+        .safeAreaInset(edge: .bottom) {
+            if let saveError { Text(saveError).font(.caption).foregroundStyle(.red).padding().background(.background) }
+        }
+        .navigationTitle(initialStudent == nil ? "Add Student" : "Edit Student")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .cancellationAction) {
+                Button("Cancel") { dismiss() }
+            }
+            ToolbarItem(placement: .confirmationAction) {
+                Button(isSaving ? "Saving…" : "Save") {
+                    guard !isSaving else { return }
+                    isSaving = true
+                    saveError = nil
+
+                    guard let cohortName = selectedCohortName else {
+                        isSaving = false
+                        return
+                    }
+
+                    let student = CohortStudent(
+                        id: initialStudent?.id ?? UUID(),
+                        fullName: fullName.trimmingCharacters(in: .whitespacesAndNewlines),
+                        email: email.trimmingCharacters(in: .whitespacesAndNewlines),
+                        university: university,
+                        fieldOfStudy: fieldOfStudy,
+                        biography: biography,
+                        techSkills: parsedSkills(techSkillsText),
+                        essentialSkills: parsedSkills(essentialSkillsText)
+                    )
+                    Task {
+                        defer { isSaving = false }
+                        do {
+                            try await onSave(cohortName, student)
+                            didSave = true
+                        } catch {
+                            saveError = "The student portfolio could not be saved. Check your connection and try again."
                         }
                     }
-                    .disabled(isSaving || fullName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                        || !SignUpValidation.email(email.trimmingCharacters(in: .whitespacesAndNewlines)))
                 }
+                .disabled(isSaving || fullName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                    || !SignUpValidation.email(email.trimmingCharacters(in: .whitespacesAndNewlines))
+                    || selectedCohortName == nil)
             }
+        }
     }
 }
 

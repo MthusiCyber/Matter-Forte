@@ -47,11 +47,7 @@ struct ContentView: View {
             AdministratorDashboardView(session: session, loadDashboard: InstituteDashboardService.loadDashboard) { route in
                 switch route {
                 case .students: return AnyView(StudentView())
-                case .addStudent: return AnyView(AddCohortStudentView(
-                    cohorts: [StudentCohort(name: "MCRI", students: [])],
-                    usesNavigationStack: false,
-                    onSave: { _, student in _ = try await InstituteDashboardService.saveStudent(student) }
-                ))
+                case .addStudent: return AnyView(InstituteAddStudentView())
                 case .approvals, .adminRequests: return AnyView(AdministratorRequestsView(client: SupabaseConfig.client))
                 case .notifications: return AnyView(AdministratorNotificationsView())
                 case .settings: return AnyView(AccountSettingsView(model: model))

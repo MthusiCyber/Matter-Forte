@@ -11,7 +11,7 @@ enum InstituteDashboardService {
         try await SupabaseConfig.client.database.rpc("matter_forte_list_students").execute().value
     }
 
-    static func saveStudent(_ student: CohortStudent, cohortName: String = "MCRI", existing: Bool = false) async throws -> InstituteStudent {
+    static func saveStudent(_ student: CohortStudent, cohortName: String, existing: Bool = false) async throws -> InstituteStudent {
         nonisolated struct StudentDetails: Encodable, Sendable {
             let id: UUID?
             let full_name: String
@@ -52,6 +52,14 @@ nonisolated struct InstituteStudent: Decodable, Identifiable, Sendable {
         case essentialSkills = "essential_skills"
     }
 
+    var cohortDisplayName: String {
+        let name = cohort?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard !name.isEmpty, name.caseInsensitiveCompare("MCRI") != .orderedSame else {
+            return "Unassigned cohort"
+        }
+        return StudentCohort.name(forNumber: name) ?? name
+    }
+
     var profile: CohortStudent {
         CohortStudent(id: id, fullName: fullName, email: email,
             university: institute, fieldOfStudy: programme, biography: biography ?? "",
@@ -66,11 +74,8 @@ struct InstituteStudentsView: View {
     @State private var cohortIDs: [String: UUID] = [:]
 
     private func makeCohorts(_ students: [InstituteStudent]) -> [StudentCohort] {
-        let groups = Dictionary(grouping: students) {
-            let name = $0.cohort?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-            return name.isEmpty ? ($0.programme.isEmpty ? ($0.institute.isEmpty ? "MCRI" : $0.institute) : $0.programme) : name
-        }
-        return groups.keys.sorted().map { name in
+        let groups = Dictionary(grouping: students, by: \.cohortDisplayName)
+        return groups.keys.sorted { $0.localizedStandardCompare($1) == .orderedAscending }.map { name in
             let id = cohortIDs[name] ?? UUID()
             cohortIDs[name] = id
             return StudentCohort(id: id, name: name, students: groups[name, default: []].map(\.profile))
@@ -83,9 +88,8 @@ struct InstituteStudentsView: View {
             isLoading: isLoading,
             loadError: errorMessage,
             onRetry: { Task { await load() } },
-            onSaveStudent: { cohortID, student in
-                let name = cohorts.first(where: { $0.id == cohortID })?.name ?? "MCRI"
-                _ = try await InstituteDashboardService.saveStudent(student, cohortName: name)
+            onSaveStudent: { cohortName, student in
+                _ = try await InstituteDashboardService.saveStudent(student, cohortName: cohortName)
             },
             onStudentAdded: { Task { await load() } }
         )
@@ -108,5 +112,44 @@ struct InstituteStudentsView: View {
             #endif
             errorMessage = "Check your connection and try again."
         }
+    }
+}
+
+struct InstituteAddStudentView: View {
+    @State private var cohorts: [StudentCohort] = []
+    @State private var isLoading = true
+    @State private var loadFailed = false
+
+    var body: some View {
+        Group {
+            if isLoading {
+                ProgressView("Loading cohorts…")
+            } else if loadFailed {
+                ContentUnavailableView {
+                    Label("Could not load cohorts", systemImage: "wifi.exclamationmark")
+                } actions: {
+                    Button("Try Again") { Task { await load() } }
+                }
+            } else {
+                AddCohortStudentView(cohorts: cohorts, usesNavigationStack: false) { name, student in
+                    _ = try await InstituteDashboardService.saveStudent(student, cohortName: name)
+                }
+            }
+        }
+        .task { await load() }
+    }
+
+    private func load() async {
+        isLoading = true
+        loadFailed = false
+        defer { isLoading = false }
+        do {
+            let students = try await InstituteDashboardService.loadStudents()
+            try Task.checkCancellation()
+            let names = Set(students.map(\.cohortDisplayName))
+            cohorts = names.sorted { $0.localizedStandardCompare($1) == .orderedAscending }
+                .map { StudentCohort(name: $0, students: []) }
+        } catch is CancellationError { return }
+        catch { loadFailed = true }
     }
 }
