@@ -84,6 +84,40 @@ final class LegalAgreementTests: XCTestCase {
         XCTAssertFalse(model.isLoading)
     }
 
+    func testCheckboxCanAcceptAndWithdrawAgreement() async throws {
+        let directory = temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let model = makeModel(directory: directory)
+        model.switchMode()
+        model.fullName = "Test Person"
+        model.email = "test@example.com"
+        model.password = "Example-password-123"
+        model.confirmation = model.password
+        XCTAssertFalse(model.hasAcceptedCurrentTerms)
+
+        model.setTermsAccepted(true)
+        XCTAssertTrue(model.hasAcceptedCurrentTerms)
+        XCTAssertNotNil(model.termsAcceptance)
+
+        model.setTermsAccepted(false)
+        XCTAssertFalse(model.hasAcceptedCurrentTerms)
+        XCTAssertNil(model.termsAcceptance)
+        await model.submit()
+        XCTAssertNotNil(model.errors["terms"])
+        XCTAssertFalse(model.isLoading)
+    }
+
+    func testCheckboxRemainsUncheckedIfReceiptCannotBeSaved() throws {
+        let path = temporaryDirectory()
+        try Data("not a directory".utf8).write(to: path)
+        defer { try? FileManager.default.removeItem(at: path) }
+        let model = makeModel(directory: path)
+        model.switchMode()
+        model.setTermsAccepted(true)
+        XCTAssertFalse(model.hasAcceptedCurrentTerms)
+        XCTAssertNotNil(model.errors["terms"])
+    }
+
     private func makeModel(directory: URL) -> AuthViewModel {
         AuthViewModel(
             client: SupabaseClient(supabaseURL: URL(string: "https://legal-tests.supabase.co")!,

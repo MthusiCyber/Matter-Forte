@@ -46,9 +46,6 @@ struct ContentView: View {
         case .administrator:
             AdministratorDashboardView(
                 session: session,
-                isSigningOut: model.isSigningOut,
-                signOutError: model.message,
-                onSignOut: { Task { await model.signOut() } },
                 loadDashboard: InstituteDashboardService.loadDashboard
             ) { route in
                 switch route {

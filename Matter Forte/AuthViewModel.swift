@@ -45,7 +45,7 @@ final class AuthViewModel: ObservableObject {
         termsAcceptance?.matches(document: LegalCopy.terms, draftID: registrationDraftID) == true
     }
 
-    /// Save first, then mark the draft accepted. A failed write leaves the legal page open.
+    /// Mark the draft accepted only after its versioned receipt is saved.
     func acceptTerms(_ document: LegalDocument) throws {
         guard document.version == LegalCopy.terms.version else {
             throw TermsAgreementError.outdatedDocument
@@ -55,6 +55,20 @@ final class AuthViewModel: ObservableObject {
         try agreementStore.save(receipt)
         termsAcceptance = receipt
         errors["terms"] = nil
+    }
+
+    func setTermsAccepted(_ accepted: Bool) {
+        guard !isLoading else { return }
+        if accepted {
+            do {
+                try acceptTerms(LegalCopy.terms)
+            } catch {
+                errors["terms"] = "Could not save your agreement. Please tick the box again."
+            }
+        } else {
+            termsAcceptance = nil
+            errors["terms"] = nil
+        }
     }
 
     func observeAuthChanges() async {
@@ -123,7 +137,7 @@ final class AuthViewModel: ObservableObject {
         do {
             if isRegistering {
                 guard let agreement = termsAcceptance, hasAcceptedCurrentTerms else {
-                    errors["terms"] = "Read the Terms of Service and select I Agree before creating your account."
+                    errors["terms"] = "Tick the box to agree to the Terms of Service before creating your account."
                     return
                 }
                 let result = try await client.auth.signUp(
@@ -264,7 +278,7 @@ final class AuthViewModel: ObservableObject {
                 errors["password"] = "Use 8+ characters with a lowercase letter, uppercase letter, number and special character."
             }
             if !hasAcceptedCurrentTerms {
-                errors["terms"] = "Read the Terms of Service and select I Agree before creating your account."
+                errors["terms"] = "Tick the box to agree to the Terms of Service before creating your account."
             }
             if fullName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 errors["fullName"] = "Enter your full name."

@@ -11,9 +11,6 @@ import Helpers
 /// Supply live loading and destination views when connecting this screen to the app.
 struct AdministratorDashboardView: View {
     let session: Auth.Session?
-    let isSigningOut: Bool
-    let signOutError: String?
-    let onSignOut: () -> Void
     let loadDashboard: () async throws -> AdministratorDashboardSnapshot
     let destination: (AdministratorDashboardDestination) -> AnyView
 
@@ -23,9 +20,6 @@ struct AdministratorDashboardView: View {
                (session.expiresAt ?? 0) > Date().timeIntervalSince1970,
                session.user.appMetadata["role"] == .string("admin") {
                 AdministratorDashboardContent(
-                    isSigningOut: isSigningOut,
-                    signOutError: signOutError,
-                    onSignOut: onSignOut,
                     loadDashboard: loadDashboard,
                     destination: destination
                 )
@@ -102,9 +96,6 @@ private enum AdministratorDashboardStyle {
 }
 
 private struct AdministratorDashboardContent: View {
-    let isSigningOut: Bool
-    let signOutError: String?
-    let onSignOut: () -> Void
     let loadDashboard: () async throws -> AdministratorDashboardSnapshot
     let destination: (AdministratorDashboardDestination) -> AnyView
 
@@ -160,23 +151,7 @@ private struct AdministratorDashboardContent: View {
     private var header: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack {
-                Button { open(.adminRequests) } label: {
-                    Label("Admin Requests", systemImage: "person.badge.shield.checkmark")
-                        .font(.subheadline.weight(.semibold))
-                        .frame(minHeight: 44)
-                }
                 Spacer()
-                Button(action: onSignOut) {
-                    if isSigningOut {
-                        ProgressView()
-                    } else {
-                        Label("Sign Out", systemImage: "rectangle.portrait.and.arrow.right")
-                    }
-                }
-                .font(.subheadline.weight(.semibold))
-                .frame(minHeight: 44)
-                .disabled(isSigningOut)
-                .accessibilityIdentifier("admin.signOut")
                 Button { open(.notifications) } label: {
                     Image(systemName: "bell")
                         .font(.system(size: 17))
@@ -196,11 +171,6 @@ private struct AdministratorDashboardContent: View {
                 }
                 .accessibilityLabel("Notifications")
                 .accessibilityValue("\(snapshot?.unreadNotifications ?? 0) unread")
-            }
-            if let signOutError {
-                Text(signOutError)
-                    .font(.callout)
-                    .foregroundStyle(.red)
             }
             Text("Administrator Dashboard")
                 .font(.title2.bold())
