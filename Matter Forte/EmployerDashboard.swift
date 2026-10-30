@@ -64,7 +64,6 @@ enum EmployerRoute: Hashable {
 }
 
 struct EmployerDashboardView: View {
-    
     private let orange = Color(red: 1.0, green: 0.39, blue: 0.15)
     private let cardGray = Color(red: 0.96, green: 0.96, blue: 0.96)
     private let circleGray = Color(red: 0.85, green: 0.85, blue: 0.85)
@@ -84,7 +83,6 @@ struct EmployerDashboardView: View {
     @State private var message = ""
 
     var body: some View {
-        
         NavigationStack(path: $path) {
             VStack(spacing: 0) {
                 ScrollView(showsIndicators: false) {
@@ -137,11 +135,8 @@ struct EmployerDashboardView: View {
         }
     }
 
-    // Notification button
-
     private var notificationButton: some View {
         HStack {
-            
             Spacer()
 
             Button {
@@ -158,8 +153,6 @@ struct EmployerDashboardView: View {
         }
     }
 
-    //Heading
-
     private var heading: some View {
         VStack(alignment: .leading, spacing: 7) {
             Text("Find your next talent")
@@ -171,18 +164,15 @@ struct EmployerDashboardView: View {
         .padding(.leading, 11)
     }
 
-    // Dashboard totals
-
     private var overviewCard: some View {
         VStack(alignment: .leading, spacing: 18) {
             Text("EMPLOYER DASHBOARD")
                 .font(.system(size: 16, weight: .bold))
                 .foregroundColor(orange)
 
-           
             HStack(alignment: .top, spacing: 16) {
                 VStack(alignment: .leading, spacing: 0) {
-                    
+
                     Text("\(applicants)")
                         .font(.system(size: 34, weight: .bold))
 
@@ -214,8 +204,6 @@ struct EmployerDashboardView: View {
         .cornerRadius(11)
     }
 
-    //  Summary cards
-
     private var summaryCards: some View {
         HStack(spacing: 15) {
             summaryCard(
@@ -232,7 +220,6 @@ struct EmployerDashboardView: View {
         }
     }
 
-    // Parameters allow this function to create different cards.
     private func summaryCard(
         symbol: String,
         number: String,
@@ -261,8 +248,6 @@ struct EmployerDashboardView: View {
         .background(cardGray)
         .cornerRadius(12)
     }
-
-    // Quick actions
 
     private var quickActions: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -299,8 +284,6 @@ struct EmployerDashboardView: View {
         }
         .padding(.horizontal, 11)
     }
-
-    // Next interview
 
     private var nextInterview: some View {
         VStack(alignment: .leading, spacing: 7) {
@@ -356,8 +339,6 @@ struct EmployerDashboardView: View {
         }
         .padding(.horizontal, 11)
     }
-
-    // Bottom menu
 
     private var bottomMenu: some View {
         HStack(spacing: 6) {
@@ -424,7 +405,6 @@ struct EmployerDashboardView: View {
         )
         .cornerRadius(10)
     }
-    // Button message
 
     private func displayMessage(_ text: String) {
         message = text
@@ -432,7 +412,7 @@ struct EmployerDashboardView: View {
     }
 }
 
-/// Placeholder page reached from the employer dashboard navigation links.
+/// Destination for an employer dashboard route.
 private struct EmployerSectionView: View {
 
     let route: EmployerRoute
@@ -441,6 +421,17 @@ private struct EmployerSectionView: View {
     private let orange = Color(red: 1.0, green: 0.39, blue: 0.15)
 
     var body: some View {
+        switch route {
+        case .postInternship:
+            InternshipView(presentsAddOnAppear: true)
+        case .internships:
+            InternshipView()
+        case .applicants, .profile:
+            placeholder
+        }
+    }
+
+    private var placeholder: some View {
         VStack(spacing: 14) {
             Image(systemName: route.symbol)
                 .font(.system(size: 44, weight: .light))
@@ -475,7 +466,6 @@ private struct EmployerSectionView: View {
         .preferredColorScheme(.light)
     }
 }
-
 
 #Preview(
     "EmployerDashboardView",
