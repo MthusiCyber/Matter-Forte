@@ -223,7 +223,6 @@ struct AuthView: View {
     }
 }
 
-
 private struct RegistrationLegalLinks: View {
     let error: String?
     let onOpen: (LegalPage) -> Void
