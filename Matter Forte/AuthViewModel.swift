@@ -38,6 +38,20 @@ final class AuthViewModel: ObservableObject {
         termsAcceptance?.matches(document: LegalCopy.terms, draftID: registrationDraftID) == true
     }
 
+    /// Resolves the signed-in role from server metadata, then the sign-up choice.
+    var authenticatedRole: AccountRole? {
+        guard let user = authenticatedSession?.user else { return nil }
+        if let value = metadataString(user.appMetadata["role"]),
+           let role = AccountRole(rawValue: value) {
+            return role
+        }
+        if let value = metadataString(user.userMetadata["requested_role"]),
+           let role = AccountRole(rawValue: value) {
+            return role
+        }
+        return nil
+    }
+
     /// Save first, then mark the draft accepted. A failed write leaves the legal page open.
     func acceptTerms(_ document: LegalDocument) throws {
         guard document.version == LegalCopy.terms.version else {
@@ -202,6 +216,11 @@ final class AuthViewModel: ObservableObject {
             else if confirmation != password { errors["confirmation"] = "Passwords do not match." }
         }
         return errors.isEmpty
+    }
+
+    private func metadataString(_ value: AnyJSON?) -> String? {
+        guard case let .string(string) = value else { return nil }
+        return string
     }
 
     private func friendlyMessage(for error: Error) -> String {
