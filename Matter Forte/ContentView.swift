@@ -88,8 +88,12 @@ struct ContentView: View {
                 .multilineTextAlignment(.center).padding()
                 .navigationTitle("Admin Access")
             }
-        case .employer, .account:
-            NavigationStack {  EmployerDashboardView() }
+        case .employer:
+            EmployerDashboardView {
+                Task { await model.signOut() }
+            }
+        case .account:
+            NavigationStack { AccountSettingsView(model: model) }
         }
     }
 
