@@ -68,9 +68,6 @@ struct EmployerDashboardView: View {
     private let cardGray = Color(red: 0.96, green: 0.96, blue: 0.96)
     private let circleGray = Color(red: 0.85, green: 0.85, blue: 0.85)
 
-    private let applicants = 61
-    private let internships = 12
-
     private let onSignOut: (() -> Void)?
 
     init(onSignOut: (() -> Void)? = nil) {
@@ -79,8 +76,10 @@ struct EmployerDashboardView: View {
 
     @State private var selectedTab = "Home"
     @State private var path: [EmployerRoute] = []
-    @State private var showMessage = false
-    @State private var message = ""
+    @State private var snapshot: EmployerSnapshot?
+    @State private var isLoading = true
+    @State private var loadError: String?
+    @State private var showNotifications = false
 
     var body: some View {
         NavigationStack(path: $path) {
@@ -91,6 +90,11 @@ struct EmployerDashboardView: View {
 
                         heading
                             .padding(.top, 27)
+
+                        if let loadError {
+                            loadErrorBanner(loadError)
+                                .padding(.top, 12)
+                        }
 
                         overviewCard
                             .padding(.leading, 10)
@@ -110,6 +114,7 @@ struct EmployerDashboardView: View {
                     .padding(.top, 20)
                     .padding(.bottom, 18)
                 }
+                .refreshable { await load() }
 
                 bottomMenu
                     .padding(.horizontal, 22)
@@ -125,13 +130,15 @@ struct EmployerDashboardView: View {
         }
         .tint(orange)
         .preferredColorScheme(.light)
+        .task { await load() }
+        .sheet(isPresented: $showNotifications, onDismiss: { Task { await load() } }) {
+            NotificationInboxView()
+        }
         .onChange(of: path) { _, newPath in
             selectedTab = newPath.last?.menuTitle ?? "Home"
-        }
-        .alert("Employer Dashboard", isPresented: $showMessage) {
-            Button("OK", role: .cancel) { }
-        } message: {
-            Text(message)
+            if newPath.isEmpty {
+                Task { await load() }
+            }
         }
     }
 
@@ -140,17 +147,44 @@ struct EmployerDashboardView: View {
             Spacer()
 
             Button {
-                displayMessage("You have no new notifications.")
+                showNotifications = true
             } label: {
                 Image(systemName: "bell")
                     .font(.system(size: 20))
                     .frame(width: 34, height: 34)
                     .background(circleGray)
                     .clipShape(Circle())
+                    .overlay(alignment: .topTrailing) {
+                        if let count = snapshot?.unreadNotifications, count > 0 {
+                            Text(count > 99 ? "99+" : String(count))
+                                .font(.system(size: 9, weight: .bold))
+                                .foregroundStyle(.white)
+                                .padding(4)
+                                .background(orange, in: Capsule())
+                                .offset(x: 4, y: -2)
+                        }
+                    }
                     .frame(width: 44, height: 44)
             }
             .accessibilityLabel("Notifications")
+            .accessibilityValue("\(snapshot?.unreadNotifications ?? 0) unread")
         }
+    }
+
+    private func loadErrorBanner(_ message: String) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: "exclamationmark.triangle")
+                .foregroundStyle(orange)
+            Text(message)
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+            Spacer(minLength: 0)
+            Button("Retry") { Task { await load() } }
+                .font(.footnote.weight(.semibold))
+        }
+        .padding(12)
+        .background(cardGray, in: RoundedRectangle(cornerRadius: 10))
+        .padding(.horizontal, 10)
     }
 
     private var heading: some View {
@@ -166,15 +200,27 @@ struct EmployerDashboardView: View {
 
     private var overviewCard: some View {
         VStack(alignment: .leading, spacing: 18) {
-            Text("EMPLOYER DASHBOARD")
-                .font(.system(size: 16, weight: .bold))
-                .foregroundColor(orange)
+            HStack {
+                Text("EMPLOYER DASHBOARD")
+                    .font(.system(size: 16, weight: .bold))
+                    .foregroundColor(orange)
+
+                Spacer(minLength: 0)
+
+                if isLoading {
+                    ProgressView()
+                        .controlSize(.small)
+                        .tint(.white)
+                        .accessibilityLabel("Refreshing dashboard")
+                }
+            }
 
             HStack(alignment: .top, spacing: 16) {
                 VStack(alignment: .leading, spacing: 0) {
 
-                    Text("\(applicants)")
+                    Text(snapshot?.totalApplicants ?? 0, format: .number)
                         .font(.system(size: 34, weight: .bold))
+                        .contentTransition(.numericText())
 
                     Text("Applicants")
                         .font(.system(size: 16, weight: .bold))
@@ -186,8 +232,9 @@ struct EmployerDashboardView: View {
                     .frame(width: 1, height: 69)
 
                 VStack(alignment: .leading, spacing: 0) {
-                    Text("\(internships)")
+                    Text(snapshot?.activeInternships ?? 0, format: .number)
                         .font(.system(size: 34, weight: .bold))
+                        .contentTransition(.numericText())
 
                     Text("Active internships")
                         .font(.system(size: 16, weight: .bold))
@@ -207,15 +254,15 @@ struct EmployerDashboardView: View {
     private var summaryCards: some View {
         HStack(spacing: 15) {
             summaryCard(
-                symbol: "person.2",
-                number: "12",
-                title: "shortlisted"
+                symbol: "calendar",
+                number: String(snapshot?.scheduledInterviews ?? 0),
+                title: "Interviews"
             )
 
             summaryCard(
-                symbol: "calendar",
-                number: "6",
-                title: "Interviews"
+                symbol: "bell",
+                number: String(snapshot?.unreadNotifications ?? 0),
+                title: "Updates"
             )
         }
     }
@@ -290,39 +337,64 @@ struct EmployerDashboardView: View {
             Text("Next Interview")
                 .font(.system(size: 25, weight: .bold))
 
-            HStack(spacing: 9) {
-                Image(systemName: "person")
-                    .font(.system(size: 34, weight: .medium))
-                    .frame(width: 57, height: 57)
-                    .background(circleGray)
-                    .clipShape(Circle())
+            if let interview = snapshot?.nextInterview {
+                nextInterviewCard(interview)
+            } else {
+                HStack(spacing: 12) {
+                    Image(systemName: "calendar.badge.plus")
+                        .font(.system(size: 30, weight: .medium))
+                        .frame(width: 57, height: 57)
+                        .background(circleGray)
+                        .clipShape(Circle())
 
-                VStack(alignment: .leading, spacing: 1) {
-                    Text("Bae Coast")
-                        .font(.system(size: 20, weight: .semibold))
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("No interviews scheduled")
+                            .font(.system(size: 20, weight: .semibold))
+                        Text("Open an applicant to schedule a Zoom interview.")
+                            .font(.system(size: 16, weight: .light))
+                    }
 
-                    Text("Tomorrow, 10:00 AM")
-                        .font(.system(size: 16, weight: .light))
-
-                    Text("Confirmed")
-                        .font(.system(size: 16, weight: .bold))
-                        .foregroundColor(.white)
-                        .padding(.horizontal, 11)
-                        .padding(.vertical, 4)
-                        .background(
-                            Color(red: 1, green: 0.60, blue: 0.44)
-                        )
-                        .cornerRadius(10)
-                        .padding(.top, 2)
+                    Spacer(minLength: 0)
                 }
+                .padding(.horizontal, 8)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .frame(minHeight: 98)
+                .background(cardGray)
+                .cornerRadius(12)
+            }
+        }
+        .padding(.horizontal, 11)
+    }
 
-                Spacer(minLength: 0)
+    private func nextInterviewCard(_ interview: EmployerNextInterview) -> some View {
+        HStack(spacing: 9) {
+            Image(systemName: "person")
+                .font(.system(size: 34, weight: .medium))
+                .frame(width: 57, height: 57)
+                .background(circleGray)
+                .clipShape(Circle())
 
-                Button {
-                    displayMessage(
-                        "Interview with Bae Coast: tomorrow at 10:00 AM. Add your video meeting link here."
-                    )
-                } label: {
+            VStack(alignment: .leading, spacing: 1) {
+                Text(interview.studentName)
+                    .font(.system(size: 20, weight: .semibold))
+
+                Text(interview.scheduledAt.formatted(date: .abbreviated, time: .shortened))
+                    .font(.system(size: 16, weight: .light))
+
+                Text(interviewStatusLabel(interview.status))
+                    .font(.system(size: 16, weight: .bold))
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 11)
+                    .padding(.vertical, 4)
+                    .background(Color(red: 1, green: 0.60, blue: 0.44))
+                    .cornerRadius(10)
+                    .padding(.top, 2)
+            }
+
+            Spacer(minLength: 0)
+
+            if let url = interviewURL(interview) {
+                Link(destination: url) {
                     Image(systemName: "video")
                         .font(.system(size: 28))
                         .foregroundColor(Color(white: 0.42))
@@ -330,14 +402,35 @@ struct EmployerDashboardView: View {
                         .background(Color(white: 0.92))
                         .frame(minHeight: 44)
                 }
-                .accessibilityLabel("Interview video details")
+                .accessibilityLabel("Join Zoom interview with \(interview.studentName)")
+            } else {
+                Image(systemName: "video")
+                    .font(.system(size: 28))
+                    .foregroundColor(Color(white: 0.6))
+                    .frame(width: 46, height: 40)
+                    .frame(minHeight: 44)
+                    .accessibilityLabel("No Zoom link available")
             }
-            .padding(.horizontal, 8)
-            .frame(height: 98)
-            .background(cardGray)
-            .cornerRadius(12)
         }
-        .padding(.horizontal, 11)
+        .padding(.horizontal, 8)
+        .frame(minHeight: 98)
+        .background(cardGray)
+        .cornerRadius(12)
+    }
+
+    private func interviewURL(_ interview: EmployerNextInterview) -> URL? {
+        let trimmed = interview.meetingUrl.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.lowercased().hasPrefix("https://") else { return nil }
+        return URL(string: trimmed)
+    }
+
+    private func interviewStatusLabel(_ status: String) -> String {
+        switch status {
+        case "interview_scheduled": "Scheduled"
+        case "hired": "Hired"
+        case "declined": "Declined"
+        default: "Confirmed"
+        }
     }
 
     private var bottomMenu: some View {
@@ -406,9 +499,21 @@ struct EmployerDashboardView: View {
         .cornerRadius(10)
     }
 
-    private func displayMessage(_ text: String) {
-        message = text
-        showMessage = true
+    @MainActor
+    private func load() async {
+        guard !Task.isCancelled else { return }
+        isLoading = true
+        loadError = nil
+        defer { isLoading = false }
+        do {
+            let result = try await WorkflowService.loadEmployerDashboard()
+            try Task.checkCancellation()
+            snapshot = result
+        } catch is CancellationError {
+            return
+        } catch {
+            loadError = "Could not refresh your dashboard. Check your connection and try again."
+        }
     }
 }
 
@@ -426,7 +531,9 @@ private struct EmployerSectionView: View {
             InternshipView(presentsAddOnAppear: true)
         case .internships:
             InternshipView()
-        case .applicants, .profile:
+        case .applicants:
+            EmployerApplicantsView()
+        case .profile:
             placeholder
         }
     }
