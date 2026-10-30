@@ -40,7 +40,7 @@ struct SettingsView: View {
                     darkAppearance: $darkAppearance
                 )
 
-                SettingsSectionTitle(title: "Support & Legal")
+                SettingsSectionTitle(title: "More Info & Support")
                 SettingsActionRow(title: "Help & Support") { showingSupport = true }
                 SettingsActionRow(title: "Terms of Service") { legalPage = .terms }
                 SettingsActionRow(title: "Privacy Policy") { legalPage = .privacy }
