@@ -18,6 +18,7 @@ final class AuthViewModel: ObservableObject {
     @Published var role: AccountRole = .admin
     @Published private(set) var isRegistering = false
     @Published private(set) var isLoading = false
+    @Published private(set) var isSigningOut = false
     @Published private(set) var isRestoringSession = true
     @Published private(set) var errors: [String: String] = [:]
     @Published private(set) var message: String?
@@ -81,10 +82,7 @@ final class AuthViewModel: ObservableObject {
                 authenticatedSession = session
                 isRestoringSession = false
             case .signedOut:
-                authenticatedSession = nil
-                isRestoringSession = false
-                password = ""
-                confirmation = ""
+                clearSignedInState()
             default:
                 break
             }
@@ -205,21 +203,33 @@ final class AuthViewModel: ObservableObject {
     }
 
     func signOut() async {
-        guard !isLoading else { return }
+        guard !isSigningOut else { return }
+        isSigningOut = true
         isLoading = true
         message = nil
         notice = nil
-        defer { isLoading = false }
-        do {
-            try await client.auth.signOut()
-            authenticatedSession = nil
-            isRegistering = false
-            errors = [:]
-            password = ""
-            confirmation = ""
-        } catch {
-            message = friendlyMessage(for: error)
+        defer {
+            isSigningOut = false
+            isLoading = false
         }
+        do {
+            // End this device's session without requiring logout of other devices.
+            try await client.auth.signOut(scope: .local)
+            clearSignedInState()
+        } catch {
+            message = "Could not sign out. Check your connection and try again."
+        }
+    }
+
+    private func clearSignedInState() {
+        authenticatedSession = nil
+        isRestoringSession = false
+        isRegistering = false
+        errors = [:]
+        password = ""
+        confirmation = ""
+        termsAcceptance = nil
+        registrationDraftID = UUID()
     }
 
     func handleAuthCallback(_ url: URL) async {

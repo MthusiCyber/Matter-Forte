@@ -124,7 +124,7 @@ struct SignUpView: View {
         .padding(.horizontal, 28)
         .padding(.vertical, 12)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .background(Color.white.ignoresSafeArea())
+        .background(Color(uiColor: .systemBackground).ignoresSafeArea())
         .tint(.appOrange)
         .buttonStyle(.plain)
         .sheet(item: $legalPage) { page in
@@ -150,10 +150,10 @@ struct SignUpView: View {
             content()
                 .accessibilityLabel(title)
                 .font(.system(size: 14))
-                .foregroundStyle(.black)
+                .foregroundStyle(.primary)
                 .padding(.horizontal, 12)
                 .frame(height: 40)
-                .background(Color.white, in: RoundedRectangle(cornerRadius: 11))
+                .background(Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: 11))
                 .overlay {
                     RoundedRectangle(cornerRadius: 11)
                         .strokeBorder(Color.appOrange, lineWidth: focusedField == field ? 2.5 : 1.5)

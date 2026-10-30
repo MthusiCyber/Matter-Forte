@@ -11,14 +11,14 @@ enum EmployerRoute: Hashable {
     case postInternship
     case applicants
     case internships
-    case profile
+    case settings
 
     var title: String {
         switch self {
         case .postInternship: "Post Internship"
         case .applicants: "Applicants"
         case .internships: "Internships"
-        case .profile: "Profile"
+        case .settings: "Settings"
         }
     }
 
@@ -27,7 +27,7 @@ enum EmployerRoute: Hashable {
         case .postInternship: "plus.circle"
         case .applicants: "person.2"
         case .internships: "briefcase"
-        case .profile: "person"
+        case .settings: "gearshape"
         }
     }
 
@@ -39,8 +39,8 @@ enum EmployerRoute: Hashable {
             "Review the students who applied to your internships."
         case .internships:
             "Manage the internship listings you currently have open."
-        case .profile:
-            "Update your company profile and contact details."
+        case .settings:
+            "Manage your account, appearance and preferences."
         }
     }
 
@@ -49,7 +49,7 @@ enum EmployerRoute: Hashable {
         case .postInternship: nil
         case .applicants: "Applicants"
         case .internships: "Internships"
-        case .profile: "Profile"
+        case .settings: "Settings"
         }
     }
 
@@ -57,24 +57,25 @@ enum EmployerRoute: Hashable {
         switch title {
         case "Applicants": .applicants
         case "Internships": .internships
-        case "Profile": .profile
+        case "Settings": .settings
         default: nil
         }
     }
 }
 
-struct EmployerDashboardView: View {
+struct EmployerDashboardView<SettingsContent: View>: View {
     private let orange = Color(red: 1.0, green: 0.39, blue: 0.15)
-    private let cardGray = Color(red: 0.96, green: 0.96, blue: 0.96)
-    private let circleGray = Color(red: 0.85, green: 0.85, blue: 0.85)
+    private let cardGray = Color(uiColor: .secondarySystemBackground)
+    private let circleGray = Color(uiColor: .tertiarySystemFill)
 
     private let applicants = 61
-    private let internships = 12
+    @State private var internships: Int?
+    @State private var internshipCountFailed = false
 
-    private let onSignOut: (() -> Void)?
+    private let settings: () -> SettingsContent
 
-    init(onSignOut: (() -> Void)? = nil) {
-        self.onSignOut = onSignOut
+    init(@ViewBuilder settings: @escaping () -> SettingsContent) {
+        self.settings = settings
     }
 
     @State private var selectedTab = "Home"
@@ -115,18 +116,22 @@ struct EmployerDashboardView: View {
                     .padding(.horizontal, 22)
                     .padding(.bottom, 13)
             }
-            .background(Color.white)
-            .foregroundColor(.black)
+            .background(Color(uiColor: .systemBackground))
+            .foregroundColor(.primary)
             .buttonStyle(.plain)
             .toolbar(.hidden, for: .navigationBar)
             .navigationDestination(for: EmployerRoute.self) { route in
-                EmployerSectionView(route: route, onSignOut: onSignOut)
+                EmployerSectionView(route: route, settings: settings)
+                    .navigationTitle(route.title)
+                    .navigationBarTitleDisplayMode(.inline)
+                    .toolbar(.visible, for: .navigationBar)
             }
         }
         .tint(orange)
-        .preferredColorScheme(.light)
+        .task { await loadInternshipCount() }
         .onChange(of: path) { _, newPath in
             selectedTab = newPath.last?.menuTitle ?? "Home"
+            if newPath.isEmpty { Task { await loadInternshipCount() } }
         }
         .alert("Employer Dashboard", isPresented: $showMessage) {
             Button("OK", role: .cancel) { }
@@ -186,7 +191,7 @@ struct EmployerDashboardView: View {
                     .frame(width: 1, height: 69)
 
                 VStack(alignment: .leading, spacing: 0) {
-                    Text("\(internships)")
+                    Text(internships.map(String.init) ?? (internshipCountFailed ? "—" : "…"))
                         .font(.system(size: 34, weight: .bold))
 
                     Text("Active internships")
@@ -325,9 +330,9 @@ struct EmployerDashboardView: View {
                 } label: {
                     Image(systemName: "video")
                         .font(.system(size: 28))
-                        .foregroundColor(Color(white: 0.42))
+                        .foregroundColor(.secondary)
                         .frame(width: 46, height: 40)
-                        .background(Color(white: 0.92))
+                        .background(Color(uiColor: .tertiarySystemFill))
                         .frame(minHeight: 44)
                 }
                 .accessibilityLabel("Interview video details")
@@ -348,7 +353,7 @@ struct EmployerDashboardView: View {
 
             menuButton(title: "Internships", symbol: "briefcase")
 
-            menuButton(title: "Profile", symbol: "person")
+            menuButton(title: "Settings", symbol: "gearshape")
         }
         .padding(.horizontal, 11)
         .padding(.vertical, 9)
@@ -396,7 +401,7 @@ struct EmployerDashboardView: View {
         .frame(maxWidth: .infinity)
         .frame(height: 64)
         .foregroundColor(
-            selectedTab == title ? orange : .black
+            selectedTab == title ? orange : .primary
         )
         .background(
             selectedTab == title
@@ -406,6 +411,16 @@ struct EmployerDashboardView: View {
         .cornerRadius(10)
     }
 
+    private func loadInternshipCount() async {
+        do {
+            let roles = try await InternshipService.load()
+            try Task.checkCancellation()
+            internships = roles.filter(\.isOpen).count
+            internshipCountFailed = false
+        } catch is CancellationError { return }
+        catch { internshipCountFailed = true; internships = nil }
+    }
+
     private func displayMessage(_ text: String) {
         message = text
         showMessage = true
@@ -413,10 +428,10 @@ struct EmployerDashboardView: View {
 }
 
 /// Destination for an employer dashboard route.
-private struct EmployerSectionView: View {
+private struct EmployerSectionView<SettingsContent: View>: View {
 
     let route: EmployerRoute
-    var onSignOut: (() -> Void)? = nil
+    let settings: () -> SettingsContent
 
     private let orange = Color(red: 1.0, green: 0.39, blue: 0.15)
 
@@ -426,7 +441,9 @@ private struct EmployerSectionView: View {
             InternshipView(presentsAddOnAppear: true)
         case .internships:
             InternshipView()
-        case .applicants, .profile:
+        case .settings:
+            settings()
+        case .applicants:
             placeholder
         }
     }
@@ -445,25 +462,13 @@ private struct EmployerSectionView: View {
                 .multilineTextAlignment(.center)
                 .foregroundColor(.secondary)
 
-            if route == .profile, let onSignOut {
-                Button(action: onSignOut) {
-                    Text("Sign Out")
-                        .font(.system(size: 17, weight: .semibold))
-                        .foregroundColor(.white)
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 50)
-                        .background(orange)
-                        .cornerRadius(10)
-                }
-                .padding(.top, 10)
-            }
+
         }
         .padding(24)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color.white)
+        .background(Color(uiColor: .systemBackground))
         .navigationTitle(route.title)
         .navigationBarTitleDisplayMode(.inline)
-        .preferredColorScheme(.light)
     }
 }
 
@@ -471,5 +476,5 @@ private struct EmployerSectionView: View {
     "EmployerDashboardView",
     traits: .fixedLayout(width: 402, height: 864)
 ) {
-    EmployerDashboardView()
+    EmployerDashboardView { SettingsView() }
 }

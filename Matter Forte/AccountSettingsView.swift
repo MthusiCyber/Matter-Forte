@@ -8,7 +8,7 @@ struct AccountSettingsView: View {
 
     var body: some View {
         SettingsView(
-            isSigningOut: model.isLoading,
+            isSigningOut: model.isSigningOut,
             signOutError: model.message,
             onEditProfile: { destination = .profile },
             onChangePassword: { destination = .password },

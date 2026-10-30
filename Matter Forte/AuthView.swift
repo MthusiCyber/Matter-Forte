@@ -3,7 +3,7 @@ import SwiftUI
 private enum AuthStyle {
     static let orange = Color(red: 0.90, green: 0.40, blue: 0.21)
     // Darker orange keeps small text readable on the pale background.
-    static let textOrange = Color(red: 0.66, green: 0.23, blue: 0.09)
+    static let textOrange = Color.appTextOrange
 }
 
 struct AuthView: View {
@@ -101,7 +101,7 @@ struct AuthView: View {
                 .frame(maxWidth: .infinity, minHeight: geometry.size.height, alignment: .top)
             }
             .scrollDismissesKeyboard(.interactively)
-            .background(LinearGradient(colors: [.white, Color(red: 1, green: 0.96, blue: 0.99), .white],
+            .background(LinearGradient(colors: [Color(uiColor: .systemBackground), Color(uiColor: .secondarySystemBackground), Color(uiColor: .systemBackground)],
                                        startPoint: .topLeading, endPoint: .bottomTrailing).ignoresSafeArea())
         }
         .sheet(item: $legalPage) { page in
@@ -109,7 +109,6 @@ struct AuthView: View {
                           onAgree: { try model.acceptTerms($0) },
                           onFinish: { legalPage = nil })
         }
-        .preferredColorScheme(.light)
         .toolbar {
             ToolbarItemGroup(placement: .keyboard) {
                 Spacer()
@@ -214,7 +213,7 @@ struct AuthView: View {
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 12).padding(.vertical, 14)
                 .frame(maxWidth: .infinity, minHeight: 50)
-                .background(.white.opacity(0.45), in: RoundedRectangle(cornerRadius: 15))
+                .background(Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: 15))
                 .overlay(RoundedRectangle(cornerRadius: 15).stroke(error == nil ? AuthStyle.orange : .red, lineWidth: 2))
                 .accessibilityLabel(label)
                 .accessibilityHint(error ?? "")

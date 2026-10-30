@@ -11,6 +11,9 @@ import Helpers
 /// Supply live loading and destination views when connecting this screen to the app.
 struct AdministratorDashboardView: View {
     let session: Auth.Session?
+    let isSigningOut: Bool
+    let signOutError: String?
+    let onSignOut: () -> Void
     let loadDashboard: () async throws -> AdministratorDashboardSnapshot
     let destination: (AdministratorDashboardDestination) -> AnyView
 
@@ -20,6 +23,9 @@ struct AdministratorDashboardView: View {
                (session.expiresAt ?? 0) > Date().timeIntervalSince1970,
                session.user.appMetadata["role"] == .string("admin") {
                 AdministratorDashboardContent(
+                    isSigningOut: isSigningOut,
+                    signOutError: signOutError,
+                    onSignOut: onSignOut,
                     loadDashboard: loadDashboard,
                     destination: destination
                 )
@@ -43,6 +49,10 @@ nonisolated struct AdministratorDashboardSnapshot: Decodable, Sendable {
     let reportedIssues: Int
     let unreadNotifications: Int
     let recentActivity: [AdministratorActivity]
+
+    var latestActivity: [AdministratorActivity] {
+        Array(recentActivity.sorted { $0.timestamp > $1.timestamp }.prefix(3))
+    }
 
     var isEmpty: Bool {
         totalStudents == 0 && activeInternships == 0 && pendingApprovals == 0
@@ -92,6 +102,9 @@ private enum AdministratorDashboardStyle {
 }
 
 private struct AdministratorDashboardContent: View {
+    let isSigningOut: Bool
+    let signOutError: String?
+    let onSignOut: () -> Void
     let loadDashboard: () async throws -> AdministratorDashboardSnapshot
     let destination: (AdministratorDashboardDestination) -> AnyView
 
@@ -153,12 +166,23 @@ private struct AdministratorDashboardContent: View {
                         .frame(minHeight: 44)
                 }
                 Spacer()
+                Button(action: onSignOut) {
+                    if isSigningOut {
+                        ProgressView()
+                    } else {
+                        Label("Sign Out", systemImage: "rectangle.portrait.and.arrow.right")
+                    }
+                }
+                .font(.subheadline.weight(.semibold))
+                .frame(minHeight: 44)
+                .disabled(isSigningOut)
+                .accessibilityIdentifier("admin.signOut")
                 Button { open(.notifications) } label: {
                     Image(systemName: "bell")
                         .font(.system(size: 17))
-                        .foregroundStyle(AdministratorDashboardStyle.charcoal)
+                        .foregroundStyle(.primary)
                         .padding(8)
-                        .background(Color(white: 0.9), in: Circle())
+                        .background(Color(uiColor: .tertiarySystemFill), in: Circle())
                         .overlay(alignment: .topTrailing) {
                             if let count = snapshot?.unreadNotifications, count > 0 {
                                 Text(count > 99 ? "99+" : String(count))
@@ -173,6 +197,11 @@ private struct AdministratorDashboardContent: View {
                 .accessibilityLabel("Notifications")
                 .accessibilityValue("\(snapshot?.unreadNotifications ?? 0) unread")
             }
+            if let signOutError {
+                Text(signOutError)
+                    .font(.callout)
+                    .foregroundStyle(.red)
+            }
             Text("Administrator Dashboard")
                 .font(.title2.bold())
                 .foregroundStyle(.primary)
@@ -185,7 +214,7 @@ private struct AdministratorDashboardContent: View {
 
     @ViewBuilder
     private func dashboard(_ data: AdministratorDashboardSnapshot) -> some View {
-        let activity = data.recentActivity.sorted { $0.timestamp > $1.timestamp }
+        let activity = data.latestActivity
         VStack(alignment: .leading, spacing: 12) {
             Text("Admin DASHBOARD")
                 .font(.caption.bold())
@@ -274,7 +303,7 @@ private struct AdministratorDashboardContent: View {
                 Image(systemName: icon)
                     .font(.title3)
                     .padding(8)
-                    .background(Color(white: 0.88), in: Circle())
+                    .background(Color(uiColor: .tertiarySystemFill), in: Circle())
                 VStack(alignment: .leading, spacing: 2) {
                     Text(count, format: .number).font(.subheadline.bold())
                     Text(title).font(.caption)
@@ -302,7 +331,7 @@ private struct AdministratorDashboardContent: View {
                 .font(.subheadline.bold())
                 .foregroundStyle(AdministratorDashboardStyle.orange)
                 .frame(width: 42, height: 42)
-                .background(Color(white: 0.87), in: Circle())
+                .background(Color(uiColor: .tertiarySystemFill), in: Circle())
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 4) {
                 Text(item.userName).font(.subheadline.bold()).foregroundStyle(.primary)

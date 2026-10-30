@@ -7,7 +7,7 @@
 
 import SwiftUI
 
-struct InternshipRole: Identifiable, Codable, Hashable {
+nonisolated struct InternshipRole: Identifiable, Codable, Hashable {
     var id = UUID()
     var title: String
     var organisation: String
@@ -16,56 +16,13 @@ struct InternshipRole: Identifiable, Codable, Hashable {
     var skills: [String]
     var isOpen = true
 
-    static let samples: [InternshipRole] = [
-        .init(
-            title: "Full Stack Developer Intern",
-            organisation: "Matter",
-            about: "Join our software development team and gain hands-on experience working on real-world projects. Learn from experienced developers, write clean code, and contribute to building innovative solutions.",
-            responsibilities: [
-                "Assist in developing and maintaining software applications",
-                "Collaborate with the development team",
-                "Write and test code under supervision",
-                "Participate in code reviews and team meetings"
-            ],
-            skills: ["Swift language", "Git and GitHub", "Collaboration", "Problem solving"]
-        ),
-        .init(
-            title: "UI/UX Designer Intern",
-            organisation: "Matter",
-            about: "Help create clear, accessible digital experiences. Work with designers and developers to turn user needs into useful interfaces.",
-            responsibilities: [
-                "Create wireframes and interactive prototypes",
-                "Support user interviews and usability testing",
-                "Design accessible layouts and components",
-                "Collaborate with developers on implementation"
-            ],
-            skills: ["Figma", "Prototyping", "User research", "Collaboration"]
-        ),
-        .init(
-            title: "Quality Assurance Intern",
-            organisation: "Matter",
-            about: "Help the team deliver reliable software by testing features, documenting issues, and checking fixes before release.",
-            responsibilities: [
-                "Write and run test cases",
-                "Document bugs with clear reproduction steps",
-                "Verify fixes and perform regression testing",
-                "Share testing results with the development team"
-            ],
-            skills: ["Attention to detail", "Software testing", "Communication", "Problem solving"]
-        ),
-        .init(
-            title: "Business Analyst Intern",
-            organisation: "Matter",
-            about: "Work with stakeholders to understand business needs and help translate them into clear requirements for the product team.",
-            responsibilities: [
-                "Gather and document business requirements",
-                "Map processes and identify improvements",
-                "Assist with data analysis and reporting",
-                "Communicate findings to stakeholders"
-            ],
-            skills: ["Analysis", "Documentation", "Communication", "Spreadsheets"]
-        )
-    ]
+    enum CodingKeys: String, CodingKey {
+        case id, title, responsibilities, skills
+        case organisation = "company_name"
+        case about = "description"
+        case isOpen = "is_open"
+    }
+
 }
 
 private enum MatterStyle {
@@ -74,12 +31,11 @@ private enum MatterStyle {
 }
 
 struct InternshipView: View {
-    @AppStorage("matter.internships.v1") private var savedRoles = Data()
-    @State private var roles = InternshipRole.samples
+    @State private var roles: [InternshipRole] = []
+    @State private var isLoading = true
     @State private var search = ""
     @State private var showAdd = false
     @State private var openOnly = false
-    @State private var showResetConfirmation = false
     @State private var storageError: String?
     @State private var didPresentAdd = false
 
@@ -145,6 +101,14 @@ struct InternshipView: View {
                 }
                 .padding(.top, 12)
 
+                if isLoading {
+                    ProgressView("Loading internships…")
+                        .frame(maxWidth: .infinity)
+                }
+                if let storageError {
+                    Text(storageError).foregroundStyle(.red)
+                    Button("Try Again") { Task { await loadRoles() } }
+                }
                 LazyVStack(spacing: 0) {
                     ForEach(filteredRoles) { role in
                         Divider()
@@ -168,7 +132,7 @@ struct InternshipView: View {
                         .buttonStyle(.plain)
                         .accessibilityHint("Opens the internship information board")
                     }
-                    if filteredRoles.isEmpty {
+                    if filteredRoles.isEmpty && !isLoading && storageError == nil {
                         Text("No internships found. Try another search or add an internship.")
                             .foregroundStyle(.secondary)
                             .padding(.vertical, 30)
@@ -187,9 +151,6 @@ struct InternshipView: View {
                         Label("Add Internship", systemImage: "plus")
                     }
                     Toggle("Open internships only", isOn: $openOnly)
-                    Button("Delete", role: .destructive) {
-                        showResetConfirmation = true
-                    }
                 } label: {
                     Image(systemName: "list.bullet")
                         .foregroundStyle(.primary)
@@ -200,50 +161,39 @@ struct InternshipView: View {
         }
         .sheet(isPresented: $showAdd) {
             AddInternshipView { newRole in
-                roles.insert(newRole, at: 0)
+                let saved = try await InternshipService.save(newRole)
+                roles.removeAll { $0.id == saved.id }
+                roles.insert(saved, at: 0)
+                storageError = nil
                 search = ""
                 openOnly = false
-                persistRoles()
             }
         }
-        .confirmationDialog("Replace all internships with the sample list?", isPresented: $showResetConfirmation, titleVisibility: .visible) {
-            Button("Reset internships", role: .destructive) {
-                roles = InternshipRole.samples
-                search = ""
-                openOnly = false
-                persistRoles()
-            }
-        }
-        .alert("Could not load internships", isPresented: Binding(
-            get: { storageError != nil },
-            set: { if !$0 { storageError = nil } }
-        )) {
-            Button("OK") { storageError = nil }
-        } message: {
-            Text(storageError ?? "")
-        }
-        .onAppear {
-            if presentsAddOnAppear && !didPresentAdd {
+        .refreshable { await loadRoles() }
+        .task {
+            await loadRoles()
+            if presentsAddOnAppear && !didPresentAdd && !Task.isCancelled {
                 didPresentAdd = true
                 showAdd = true
-            }
-            guard !savedRoles.isEmpty else { return }
-            do {
-                roles = try JSONDecoder().decode([InternshipRole].self, from: savedRoles)
-            } catch {
-                storageError = "Your saved data could not be read. Samples are shown; saved data has not been replaced."
             }
         }
         .tint(MatterStyle.orange)
     }
 
-    private func persistRoles() {
+    private func loadRoles() async {
+        isLoading = true
+        storageError = nil
+        defer { isLoading = false }
         do {
-            savedRoles = try JSONEncoder().encode(roles)
-        } catch {
-            storageError = "The internships could not be saved. Please try again."
+            let loaded = try await InternshipService.load()
+            try Task.checkCancellation()
+            roles = loaded
+        } catch is CancellationError { return }
+        catch {
+            storageError = "Could not load internships. Check your connection and try again."
         }
     }
+
 }
 
 struct DepartmentInfoView: View {
@@ -324,14 +274,18 @@ struct AddInternshipView: View {
     @State private var responsibilities = ""
     @State private var skills = ""
     @State private var isOpen = true
-    let onSave: (InternshipRole) -> Void
+    @State private var isSaving = false
+    @State private var saveError: String?
+    @State private var draftID = UUID()
+    let onSave: (InternshipRole) async throws -> Void
 
     private func clean(_ value: String) -> String {
         value.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     private var canSave: Bool {
-        !clean(title).isEmpty && !clean(organisation).isEmpty &&
+        !clean(title).isEmpty && clean(title).count <= 255 &&
+        !clean(organisation).isEmpty && clean(organisation).count <= 255 &&
         !clean(about).isEmpty && !lines(responsibilities).isEmpty &&
         !skillList.isEmpty
     }
@@ -374,25 +328,45 @@ struct AddInternshipView: View {
                     Text("Separate skills with commas. Complete all fields to save.")
                 }
             }
+            .disabled(isSaving)
+            .interactiveDismissDisabled(isSaving)
+            .safeAreaInset(edge: .bottom) {
+                if let saveError {
+                    Text(saveError).font(.callout).foregroundStyle(.red)
+                        .padding().frame(maxWidth: .infinity).background(.background)
+                }
+            }
             .navigationTitle("Add Internship")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
+                    Button("Cancel") { dismiss() }.disabled(isSaving)
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Save") {
-                        onSave(InternshipRole(
+                    Button(isSaving ? "Saving…" : "Save") {
+                        guard canSave, !isSaving else { return }
+                        let role = InternshipRole(
+                            id: draftID,
                             title: clean(title),
                             organisation: clean(organisation),
                             about: clean(about),
                             responsibilities: lines(responsibilities),
                             skills: skillList,
                             isOpen: isOpen
-                        ))
-                        dismiss()
+                        )
+                        isSaving = true
+                        saveError = nil
+                        Task {
+                            defer { isSaving = false }
+                            do {
+                                try await onSave(role)
+                                dismiss()
+                            } catch {
+                                saveError = "Could not save the internship. Check your connection and try again. Your details are still here."
+                            }
+                        }
                     }
-                    .disabled(!canSave)
+                    .disabled(!canSave || isSaving)
                 }
             }
         }

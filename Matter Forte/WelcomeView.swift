@@ -22,7 +22,7 @@ struct MatterForteAppView: View {
 struct NextView: View {
     var body: some View {
         ZStack {
-            Color.white.ignoresSafeArea()
+            Color(uiColor: .systemBackground).ignoresSafeArea()
             VStack(spacing: 20) {
                 Image(systemName: "arrow.right.circle.fill")
                     .font(.system(size: 60))
@@ -53,7 +53,6 @@ struct MatterForteRootView: View {
             showingWelcome: showingWelcome,
             onContinue: onContinue
         )
-        .preferredColorScheme(.light)
         .task { @MainActor in
             guard !showingWelcome else { return }
             withAnimation(reduceMotion ? nil : .spring(response: 0.85, dampingFraction: 0.8)) {
@@ -115,7 +114,7 @@ private struct MatterForteScene: View {
             let arcHeight = min(width * 0.2, 90)
 
             ZStack {
-                Color.white
+                Color(uiColor: .systemBackground)
 
                 Ellipse()
                     .fill(Color.appOrange)
@@ -185,7 +184,7 @@ private struct MatterForteScene: View {
                         .font(.system(size: 29, weight: .semibold))
                         .foregroundStyle(.orange)
                         .frame(maxWidth: .infinity, minHeight: 66)
-                        .background(.white, in: RoundedRectangle(cornerRadius: 16))
+                        .background(Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: 16))
                 }
                 .buttonStyle(MatterPressStyle())
                 .padding(.horizontal, width * 0.09)
@@ -282,7 +281,7 @@ private struct MatterForteLogo: View {
                         value: revealed
                     )
             }
-            .foregroundStyle(Color.black.opacity(isVisible ? 1 : 0.3))
+            .foregroundStyle(Color.primary.opacity(isVisible ? 1 : 0.3))
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Matter Forte")

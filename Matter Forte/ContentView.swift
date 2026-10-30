@@ -29,7 +29,7 @@ struct ContentView: View {
             }
         }
         .tint(.appOrange)
-        .preferredColorScheme(model.authenticatedSession != nil && darkAppearance ? .dark : .light)
+        .preferredColorScheme(darkAppearance ? .dark : .light)
         .task { await model.observeAuthChanges() }
         .onChange(of: model.authenticatedSession?.user.id) { old, new in
             if old != nil && new == nil { launchStage = .authentication }
@@ -44,7 +44,13 @@ struct ContentView: View {
             requestedRole: metadataString(session.user.userMetadata["requested_role"])
         ) {
         case .administrator:
-            AdministratorDashboardView(session: session, loadDashboard: InstituteDashboardService.loadDashboard) { route in
+            AdministratorDashboardView(
+                session: session,
+                isSigningOut: model.isSigningOut,
+                signOutError: model.message,
+                onSignOut: { Task { await model.signOut() } },
+                loadDashboard: InstituteDashboardService.loadDashboard
+            ) { route in
                 switch route {
                 case .students: return AnyView(StudentView())
                 case .addStudent: return AnyView(InstituteAddStudentView())
@@ -86,7 +92,7 @@ struct ContentView: View {
             }
         case .employer:
             EmployerDashboardView {
-                Task { await model.signOut() }
+                AccountSettingsView(model: model)
             }
         case .account:
             NavigationStack { AccountSettingsView(model: model) }

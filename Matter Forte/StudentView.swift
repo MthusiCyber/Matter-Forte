@@ -9,7 +9,7 @@ struct StudentView: View {
 
 private enum StudentDirectoryStyle {
     static let orange = Color(red: 1, green: 0.40, blue: 0.17)
-    static let heading = Color(red: 0.76, green: 0.29, blue: 0.10)
+    static let heading = Color.appTextOrange
 }
 
 nonisolated struct CohortStudent: Identifiable, Hashable, Sendable {

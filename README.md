@@ -70,3 +70,18 @@ Navigation checks
 
 Role-routing checks are in scripts/check_navigation.swift. They verify that only
 server-authorized admins open the dashboard and student accounts cannot enter it.
+
+
+Internship persistence
+
+Apply `supabase/migrations/202610300004_internships.sql` after the earlier migrations.
+It extends the existing `public.internships` table without deleting records, adds
+checked save/list RPCs, and connects dashboard internship counts to open listings.
+Employers see their own listings; administrators see all listings. Ownership uses
+`posted_by` referencing `auth.users`; the legacy `created_by` reference is preserved.
+App saves use the signed-in session and public key. No privileged key is needed.
+The form waits for a successful database response and retains inputs on failure.
+Retrying a draft uses the same ID to avoid duplicate listings.
+
+The phone's old `matter.internships.v1` cache is left intact but is no longer used
+as the live listing source. Old sample listings are not automatically published.

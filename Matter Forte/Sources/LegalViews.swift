@@ -3,7 +3,7 @@ import Foundation
 
 private enum LegalStyle {
     static let orange = Color(red: 0.96, green: 0.39, blue: 0.14)
-    static let textOrange = Color(red: 0.69, green: 0.23, blue: 0.05)
+    static let textOrange = Color.appTextOrange
     static let buttonOrange = Color(red: 0.88, green: 0.35, blue: 0.08)
 }
 
@@ -54,10 +54,9 @@ struct LegalFlowView: View {
                     .foregroundStyle(LegalStyle.textOrange)
                 }
             }
-            .toolbarBackground(.white, for: .navigationBar)
+            .toolbarBackground(Color(uiColor: .systemBackground), for: .navigationBar)
             .toolbarBackground(.visible, for: .navigationBar)
         }
-        .preferredColorScheme(.light)
     }
 }
 

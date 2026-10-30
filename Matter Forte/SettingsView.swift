@@ -55,11 +55,9 @@ struct SettingsView: View {
         }
         .background(Color(uiColor: .systemBackground))
         .tint(Color.appOrange)
-        .preferredColorScheme(darkAppearance ? .dark : .light)
         .disabled(isSigningOut)
         .sheet(item: $legalPage) { page in
             SettingsLegalView(startingPage: page, onFinish: { legalPage = nil })
-                .preferredColorScheme(darkAppearance ? .dark : .light)
         }
         .sheet(isPresented: $showingSupport) {
             SettingsSupportView(contactURL: supportURL)
