@@ -339,6 +339,7 @@ private struct StudentInitialsView: View {
 struct CohortStudentProfileView: View {
     @State private var student: CohortStudent
     @State private var showingEdit = false
+    @State private var showingPortfolio = false
     let cohortName: String
 
     init(student: CohortStudent, cohortName: String) {
@@ -384,6 +385,19 @@ struct CohortStudentProfileView: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityHint("View all tech skills and essential skills for this student")
+
+                Button {
+                    showingPortfolio = true
+                } label: {
+                    Label("Send Portfolio to Employer", systemImage: "paperplane")
+                        .font(.headline)
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity)
+                        .frame(minHeight: 50)
+                        .background(StudentDirectoryStyle.orange, in: RoundedRectangle(cornerRadius: 12))
+                }
+                .buttonStyle(.plain)
+                .accessibilityHint("Choose an employer to receive this student's portfolio")
             }
             .frame(maxWidth: 560)
             .padding(28)
@@ -404,6 +418,9 @@ struct CohortStudentProfileView: View {
                     let record = try await InstituteDashboardService.saveStudent(updated, cohortName: cohortName, existing: true)
                     student = record.profile
                 })
+        }
+        .sheet(isPresented: $showingPortfolio) {
+            SendPortfolioView(student: student)
         }
         .textSelection(.enabled)
     }
