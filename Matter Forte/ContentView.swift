@@ -10,22 +10,27 @@ struct ContentView: View {
             if model.isRestoringSession {
                 ProgressView("Restoring session…")
             } else if let session = model.authenticatedSession {
-                // Replace this NavigationStack with your actual MainApplicationView.
-                NavigationStack {
-                    VStack(spacing: 24) {
-                        Text("Welcome to Matter Forte").font(.title2)
-                        Text(session.user.email ?? "Signed in")
-                            .foregroundStyle(.secondary)
-                        if let message = model.message {
-                            Text(message).foregroundStyle(.red).multilineTextAlignment(.center)
-                        }
-                        Button(model.isLoading ? "Signing Out…" : "Sign Out") {
-                            Task { await model.signOut() }
-                        }
-                        .disabled(model.isLoading)
+                if model.authenticatedRole == .employer {
+                    EmployerDashboardView {
+                        Task { await model.signOut() }
                     }
-                    .padding()
-                    .navigationTitle("Home")
+                } else {
+                    NavigationStack {
+                        VStack(spacing: 24) {
+                            Text("Welcome to Matter Forte").font(.title2)
+                            Text(session.user.email ?? "Signed in")
+                                .foregroundStyle(.secondary)
+                            if let message = model.message {
+                                Text(message).foregroundStyle(.red).multilineTextAlignment(.center)
+                            }
+                            Button(model.isLoading ? "Signing Out…" : "Sign Out") {
+                                Task { await model.signOut() }
+                            }
+                            .disabled(model.isLoading)
+                        }
+                        .padding()
+                        .navigationTitle("Home")
+                    }
                 }
             } else {
                 AuthView(model: model)
