@@ -3,7 +3,7 @@ import SwiftUI
 struct SettingsSupportView: View {
     var contactURL: URL?
     @Environment(\.dismiss) private var dismiss
-    
+
     var body: some View {
         NavigationStack {
             VStack {
