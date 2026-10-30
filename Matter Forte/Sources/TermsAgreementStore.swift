@@ -43,7 +43,6 @@ struct TermsAgreementStore {
     }
 }
 
-
 enum TermsAgreementError: LocalizedError {
     case outdatedDocument
     var errorDescription: String? { "The terms have changed. Please review the current version." }
