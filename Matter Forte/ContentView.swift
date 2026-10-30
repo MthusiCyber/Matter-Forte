@@ -89,7 +89,7 @@ struct ContentView: View {
                 .navigationTitle("Admin Access")
             }
         case .employer, .account:
-            NavigationStack { AccountSettingsView(model: model) }
+            NavigationStack {  EmployerDashboardView() }
         }
     }
 
