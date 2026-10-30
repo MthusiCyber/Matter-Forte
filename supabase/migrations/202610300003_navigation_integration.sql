@@ -1,5 +1,21 @@
 -- Apply after the admin-approval and dashboard migrations.
 -- Students are institute portfolios maintained by administrators, not app users.
+-- Drop the function first to prevent the 42P13 signature-change error on GitHub
+drop function if exists public.matter_forte_list_students();
+
+create function public.matter_forte_list_students()
+returns setof public.matter_forte_students
+language plpgsql stable security definer set search_path = ''
+as $$
+begin
+    if not public.matter_forte_is_admin() then
+        raise exception 'Administrator access required' using errcode = '42501';
+    end if;
+    return query select s.* from public.matter_forte_students s order by s.full_name, s.id;
+end;
+$$;
+revoke all on function public.matter_forte_list_students() from public, anon;
+grant execute on function public.matter_forte_list_students() to authenticated;
 begin;
 
 create table if not exists public.matter_forte_students (
