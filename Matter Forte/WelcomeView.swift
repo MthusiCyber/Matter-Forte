@@ -1,7 +1,7 @@
 //
 //  WelcomeView.swift
 //  Matter Forte
-//  Created by Prosperity on 29/10/2026. 
+//  Created by Prosperity on 29/10/2026.
 
 import SwiftUI
 
@@ -47,7 +47,7 @@ struct MatterForteRootView: View {
     @State private var showingWelcome = false
 
     var body: some View {
-      
+
         MatterForteScene(
             appeared: appeared,
             showingWelcome: showingWelcome,
@@ -143,7 +143,7 @@ private struct MatterForteScene: View {
                     .offset(y: showingWelcome || reduceMotion ? 0 : height * 0.16)
                     .opacity(showingWelcome ? 1 : 0)
                     .accessibilityHidden(true)
-                
+
                 MatterForteLogo(animateLetters: true, revealed: appeared)
                     .frame(width: min(width * 0.64, 280))
                     .position(x: width / 2, y: height * (showingWelcome ? 0.28 : 0.44))
