@@ -70,7 +70,7 @@ nonisolated struct AdministratorActivity: Decodable, Identifiable, Sendable {
 }
 
 enum AdministratorDashboardDestination: String, Hashable {
-    case students, approvals, adminRequests, reportedIssues, addStudent, notifications, settings
+    case students, approvals, adminRequests, reportedIssues, addStudent, notifications, settings, internships
 
     var title: String {
         switch self {
@@ -81,6 +81,7 @@ enum AdministratorDashboardDestination: String, Hashable {
         case .addStudent: "Add Student"
         case .notifications: "Notifications"
         case .settings: "Settings"
+        case .internships: "Active Internships"
         }
     }
 }
@@ -201,6 +202,7 @@ private struct AdministratorDashboardContent: View {
         LazyVGrid(columns: columns, spacing: 12) {
             summaryLink(count: data.pendingApprovals, title: "Pending approvals", icon: "person.2.badge.gearshape", route: .approvals)
             summaryLink(count: data.reportedIssues, title: "Reported issues", icon: "shield.lefthalf.filled", route: .reportedIssues)
+            summaryLink(count: data.activeInternships, title: "Active internships", icon: "briefcase", route: .internships)
         }
 
         if data.isEmpty {
@@ -359,7 +361,7 @@ private struct AdministratorDashboardContent: View {
         case .students, .addStudent: selectedTab = .students
         case .approvals, .adminRequests: selectedTab = .approvals
         case .settings: selectedTab = .settings
-        case .notifications, .reportedIssues: selectedTab = nil
+        case .notifications, .reportedIssues, .internships: selectedTab = nil
         }
         path.append(route)
     }
