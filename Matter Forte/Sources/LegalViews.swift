@@ -123,10 +123,13 @@ struct PrivacyPolicyView: View {
 }
 
 private struct LegalDocumentPage<Actions: View>: View {
+    @Environment(\.colorScheme) private var colorScheme
     let document: LegalDocument
     private let actions: () -> Actions
+    private let introduction: LocalizedStringKey
 
-    init(document: LegalDocument, @ViewBuilder actions: @escaping () -> Actions) {
+    init(document: LegalDocument, introduction: LocalizedStringKey = "Please read before creating your account.", @ViewBuilder actions: @escaping () -> Actions) {
+        self.introduction = introduction
         self.document = document
         self.actions = actions
     }
@@ -144,9 +147,9 @@ private struct LegalDocumentPage<Actions: View>: View {
                     .foregroundStyle(LegalStyle.orange)
                     .accessibilityAddTraits(.isHeader)
                     .fixedSize(horizontal: false, vertical: true)
-                Text("Please read before creating your account.")
+                Text(introduction)
                     .font(.subheadline)
-                    .foregroundStyle(Color(white: 0.32))
+                    .foregroundStyle(.secondary)
                     .padding(.top, 12)
                     .padding(.bottom, 22)
                 Divider()
@@ -155,11 +158,11 @@ private struct LegalDocumentPage<Actions: View>: View {
                         VStack(alignment: .leading, spacing: 5) {
                             Text(String(format: "%02d  %@", section.id, section.title))
                                 .font(.subheadline.weight(.bold))
-                                .foregroundStyle(LegalStyle.textOrange)
+                                .foregroundStyle(colorScheme == .dark ? LegalStyle.orange : LegalStyle.textOrange)
                                 .accessibilityAddTraits(.isHeader)
                             Text(section.text)
                                 .font(.subheadline)
-                                .foregroundStyle(Color(white: 0.30))
+                                .foregroundStyle(.primary)
                                 .lineSpacing(2)
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -169,7 +172,7 @@ private struct LegalDocumentPage<Actions: View>: View {
                 .padding(.top, 16)
                 Text(document.isSampleCopy ? "Sample policy text · Wireframe" : "Version \(document.version)")
                     .font(.caption)
-                    .foregroundStyle(Color(white: 0.40))
+                    .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity)
                     .multilineTextAlignment(.center)
                     .padding(.top, 24)
@@ -177,7 +180,7 @@ private struct LegalDocumentPage<Actions: View>: View {
                 if document.isSampleCopy {
                     Text("Version \(document.version)")
                         .font(.caption2)
-                        .foregroundStyle(Color(white: 0.40))
+                        .foregroundStyle(.secondary)
                         .frame(maxWidth: .infinity)
                         .multilineTextAlignment(.center)
                         .padding(.top, 5)
@@ -191,7 +194,7 @@ private struct LegalDocumentPage<Actions: View>: View {
             .padding(.bottom, 28)
             .frame(maxWidth: .infinity)
         }
-        .background(Color.white.ignoresSafeArea())
+        .background(Color(uiColor: .systemBackground).ignoresSafeArea())
         .tint(LegalStyle.orange)
     }
 }
@@ -212,10 +215,11 @@ private struct LegalPrimaryButtonStyle: ButtonStyle {
 }
 
 private struct LegalTextButtonStyle: ButtonStyle {
+    @Environment(\.colorScheme) private var colorScheme
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(.subheadline)
-            .foregroundStyle(LegalStyle.textOrange)
+            .foregroundStyle(colorScheme == .dark ? LegalStyle.orange : LegalStyle.textOrange)
             .multilineTextAlignment(.center)
             .frame(maxWidth: .infinity, minHeight: 44)
             .contentShape(Rectangle())
@@ -232,5 +236,40 @@ struct LegalViews_Previews: PreviewProvider {
                 .previewDisplayName("Privacy · 383 × 832")
         }
         .previewLayout(.fixed(width: 383, height: 832))
+    }
+}
+
+/// Settings displays the same documents without recording a new signup agreement.
+struct SettingsLegalView: View {
+    @State private var page: LegalPage
+    let onFinish: () -> Void
+
+    init(startingPage: LegalPage, onFinish: @escaping () -> Void) {
+        _page = State(initialValue: startingPage)
+        self.onFinish = onFinish
+    }
+
+    var body: some View {
+        NavigationStack {
+            LegalDocumentPage(
+                document: page == .terms ? LegalCopy.terms : LegalCopy.privacy,
+                introduction: "Review the policies for your Matter Forte account."
+            ) {
+                Button("Back to Settings", action: onFinish)
+                    .buttonStyle(LegalPrimaryButtonStyle())
+                Button {
+                    page = page == .terms ? .privacy : .terms
+                } label: {
+                    Text(page == .terms ? "Read our Privacy Policy" : "Read our Terms of Service")
+                }
+                .buttonStyle(LegalTextButtonStyle())
+            }
+            .id(page)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done", action: onFinish)
+                }
+            }
+        }
     }
 }

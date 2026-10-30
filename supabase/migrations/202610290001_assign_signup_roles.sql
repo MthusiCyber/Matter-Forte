@@ -1,0 +1,2 @@
+-- Superseded by 202610300001_admin_approvals.sql.
+-- Role assignment and migration of existing requests are handled there.
