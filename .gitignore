@@ -1,19 +1,4 @@
-# macOS
-.DS_Store
 
-# Xcode user-specific settings and state
-xcuserdata/
-*.xcuserstate
-*.xccheckout
-*.xcscmblueprint
-
-# Build output
-build/
-DerivedData/
-*.ipa
-*.dSYM
-*.dSYM.zip
-
-# Swift Package Manager build output
-.build/
-.swiftpm/
+# Local test logins and scratch files
+work/
+__pycache__/
