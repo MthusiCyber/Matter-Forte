@@ -54,6 +54,7 @@ struct ContentView: View {
                 ))
                 case .approvals, .adminRequests: return AnyView(AdministratorRequestsView(client: SupabaseConfig.client))
                 case .notifications: return AnyView(AdministratorNotificationsView())
+                case .internships: return AnyView(AdministratorInternshipsView())
                 case .settings: return AnyView(AccountSettingsView(model: model))
                 case .reportedIssues:
                     return AnyView(ContentUnavailableView("Reported Issues", systemImage: "shield",
